@@ -1,0 +1,18 @@
+{
+  "short_name": "Al Oussoud",
+  "name": "Club Al Oussoud - Gym Management",
+  "description": "Application de gestion pour Club Al Oussoud Gym & Fitness",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#09090b",
+  "theme_color": "#f97316",
+  "display": "standalone",
+  "orientation": "portrait"
+}
