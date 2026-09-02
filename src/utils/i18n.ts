@@ -144,6 +144,8 @@ export const translations = {
     exportBackup: 'Sauvegarder les Données (JSON)',
     importBackup: 'Restaurer une Sauvegarde',
     backupSuccess: 'Sauvegarde téléchargée avec succès !',
+    deleteMember: 'Supprimer',
+    confirmDeleteMember: 'Êtes-vous sûr de vouloir supprimer ce membre ? Cette action est irréversible.',
     whatsappReminderTemplate: (name: string, plan: string, days: number, isUnpaid: boolean) =>
       getWhatsAppReminder('fr', name, plan, days, isUnpaid)
   },
@@ -253,6 +255,8 @@ export const translations = {
     exportBackup: 'تحميل نسخة احتياطية (JSON)',
     importBackup: 'استرجاع نسخة سابقة',
     backupSuccess: 'تم تحميل النسخة الاحتياطية بنجاح!',
+    deleteMember: 'حذف العضو',
+    confirmDeleteMember: 'هل أنت متأكد من حذف هذا العضو نهائياً من النظام؟',
     whatsappReminderTemplate: (name: string, plan: string, days: number, isUnpaid: boolean) =>
       getWhatsAppReminder('ar', name, plan, days, isUnpaid)
   },
@@ -362,6 +366,8 @@ export const translations = {
     exportBackup: 'Backup Data (JSON)',
     importBackup: 'Restore Backup',
     backupSuccess: 'Data backup downloaded successfully!',
+    deleteMember: 'Delete',
+    confirmDeleteMember: 'Are you sure you want to delete this member? This action cannot be undone.',
     whatsappReminderTemplate: (name: string, plan: string, days: number, isUnpaid: boolean) =>
       getWhatsAppReminder('en', name, plan, days, isUnpaid)
   }

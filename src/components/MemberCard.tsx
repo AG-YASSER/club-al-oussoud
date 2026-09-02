@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Member, MembershipPlan, getSubscriptionStatus } from '../db/db';
 import { Avatar, Badge, Button } from './ui/shadcn';
-import { Phone, MessageCircle, RefreshCw, CheckCircle2, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { Phone, MessageCircle, RefreshCw, CheckCircle2, ChevronDown, ChevronUp, MessageSquare, Trash2 } from 'lucide-react';
 import { SupportedLanguage, translations, getWhatsAppReminder } from '../utils/i18n';
 
 interface MemberCardProps {
@@ -10,6 +10,7 @@ interface MemberCardProps {
   onCheckIn: (member: Member) => void;
   onRenew: (member: Member) => void;
   onTogglePaymentStatus: (member: Member) => void;
+  onDeleteMember?: (member: Member) => void;
   lang?: SupportedLanguage;
 }
 
@@ -19,6 +20,7 @@ export function MemberCard({
   onCheckIn,
   onRenew,
   onTogglePaymentStatus,
+  onDeleteMember,
   lang = 'fr'
 }: MemberCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -213,6 +215,23 @@ export function MemberCard({
             <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-orange-500" />
             {member.isPaid ? t.markUnpaid : t.markPaid}
           </Button>
+
+          {/* Delete Member Button */}
+          {onDeleteMember && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(t.confirmDeleteMember || 'Supprimer ce membre ?')) {
+                  onDeleteMember(member);
+                }
+              }}
+              className="w-full py-1.5 rounded-lg border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors active:scale-98"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{t.deleteMember}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

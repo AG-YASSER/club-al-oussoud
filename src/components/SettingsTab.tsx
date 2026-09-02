@@ -428,6 +428,26 @@ export function SettingsTab({
             className="hidden"
           />
         </div>
+
+        <div className="pt-2 border-t border-zinc-800/80">
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={async () => {
+              if (window.confirm('Voulez-vous réinitialiser et vider la liste des membres pour commencer à zéro ?')) {
+                await db.members.clear();
+                await db.checkIns.clear();
+                await db.payments.clear();
+                onPlansUpdated();
+                alert('La base de données a été vidée avec succès !');
+              }
+            }}
+            className="w-full h-8 text-xs font-bold gap-1.5"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Vider la base de données (Départ à zéro)</span>
+          </Button>
+        </div>
       </Card>
     </div>
   );

@@ -181,6 +181,17 @@ export function App() {
     await refreshData();
   };
 
+  // Delete Member Permanently
+  const handleDeleteMember = async (member: Member) => {
+    try {
+      await db.members.delete(member.id);
+      await refreshData();
+      setToastMessage({ text: `${member.fullName} a été supprimé.`, type: 'warning' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Status counters
   const counts = members.reduce(
     (acc, m) => {
@@ -384,6 +395,7 @@ export function App() {
                       onCheckIn={handleCheckIn}
                       onRenew={(m) => setRenewingMember(m)}
                       onTogglePaymentStatus={handleTogglePayment}
+                      onDeleteMember={handleDeleteMember}
                       lang={lang}
                     />
                   ))
