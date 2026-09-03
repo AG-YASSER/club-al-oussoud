@@ -27,7 +27,7 @@ class SyncEngine {
   private async handleConnectivityChange(online: boolean) {
     this.isOnline = online;
     if (online) {
-      console.log('[SyncEngine] Back online! Processing queued offline actions...');
+      console.log('[SyncEngine] Back online! Processing queued offline financial actions...');
       await this.processQueue();
     }
     this.notify();
@@ -57,9 +57,9 @@ class SyncEngine {
 
     for (const item of pendingItems) {
       try {
-        // Simulate remote server sync call
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        console.log(`[SyncEngine] Successfully synced action: ${item.action}`, item.payload);
+        // Simulate remote server sync call for local-first operations (members, payments, subscriptions)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        console.log(`[SyncEngine] Successfully synced financial action: ${item.action}`, item.payload);
         await db.syncQueue.update(item.id, { synced: true });
       } catch (err) {
         console.error(`[SyncEngine] Failed syncing action ${item.action}`, err);

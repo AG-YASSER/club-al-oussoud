@@ -1,0 +1,69 @@
+/* ==========================================================================
+   Club Al Oussoud - Global CSS Design System Variables
+   Strict CSS Variables for Consistent, Theme-Driven UI Styling
+   ========================================================================== */
+
+:root {
+  /* Core Background & Surfaces */
+  --background: #09090b;
+  --surface: #121216;
+  --surface-hover: #18181f;
+
+  /* Unified Card Styling (Used across Members, Settings, Finance) */
+  --card: rgba(18, 18, 22, 0.75);
+  --card-solid: #121216;
+  --card-subtle: rgba(24, 24, 27, 0.6);
+  --card-hover: rgba(28, 28, 34, 0.85);
+  --card-foreground: #f4f4f5;
+
+  /* Borders */
+  --border: #27272a;
+  --border-subtle: rgba(39, 39, 42, 0.75);
+  --border-hover: #3f3f46;
+
+  /* Typography / Text Contrast */
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+
+  /* Primary (Club Brand Orange) */
+  --primary: #f97316;
+  --primary-hover: #ea580c;
+  --primary-foreground: #ffffff;
+  --primary-bg: rgba(249, 115, 22, 0.12);
+  --primary-border: rgba(249, 115, 22, 0.25);
+
+  /* Accent */
+  --accent: #f97316;
+  --accent-bg: rgba(249, 115, 22, 0.12);
+  --accent-border: rgba(249, 115, 22, 0.25);
+  --accent-foreground: #ffffff;
+
+  /* Semantic Status Colors */
+  --success: #10b981;
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --success-border: rgba(16, 185, 129, 0.25);
+
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --danger-border: rgba(239, 68, 68, 0.25);
+
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-border: rgba(245, 158, 11, 0.25);
+
+  --info: #0ea5e9;
+  --info-bg: rgba(14, 165, 233, 0.12);
+  --info-border: rgba(14, 165, 233, 0.25);
+
+  /* Bottom Navigation / Footer */
+  --nav-bg: rgba(9, 9, 11, 0.95);
+  --nav-border: rgba(39, 39, 42, 0.85);
+  --nav-glow: rgba(249, 115, 22, 0.18);
+
+  /* Safe Area Insets */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}

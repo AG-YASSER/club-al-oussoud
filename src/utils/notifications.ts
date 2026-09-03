@@ -49,10 +49,12 @@ export async function sendNativeNotification(title: string, body: string, iconUr
   }
 }
 
+import { SupportedLanguage } from './i18n';
+
 /**
  * Scan members list and trigger push alerts for subscriptions expiring in ≤ 3 days, 1 day, or overdue
  */
-export async function checkAndNotifyExpiringMembers(members: Member[]) {
+export async function checkAndNotifyExpiringMembers(members: Member[], lang: SupportedLanguage = 'fr') {
   const hasPermission = await requestNotificationPermission();
   if (!hasPermission || members.length === 0) return;
 
@@ -67,13 +69,27 @@ export async function checkAndNotifyExpiringMembers(members: Member[]) {
   const expiringSoonCount = urgentMembers.filter((m) => m.isPaid && getSubscriptionStatus(m).daysRemaining <= 3 && getSubscriptionStatus(m).daysRemaining >= 0).length;
   const expiredCount = urgentMembers.filter((m) => m.isPaid && getSubscriptionStatus(m).daysRemaining < 0).length;
 
+  let title = 'Club Al Oussoud - Rappel Échéances';
   let body = '';
-  if (unpaidCount > 0) body += `${unpaidCount} cotisation(s) impayée(s). `;
-  if (expiringSoonCount > 0) body += `${expiringSoonCount} abonnement(s) expire(nt) sous 3 jours. `;
-  if (expiredCount > 0) body += `${expiredCount} abonnement(s) expiré(s).`;
 
-  await sendNativeNotification(
-    `Club Al Oussoud - Rappel Échéances`,
-    body || `${urgentMembers.length} membres nécessitent une relance.`
-  );
+  if (lang === 'ar') {
+    title = 'نادي الأسود - تنبيه الاستحقاقات';
+    if (unpaidCount > 0) body += `${unpaidCount} اشتراك غير مسدد. `;
+    if (expiringSoonCount > 0) body += `${expiringSoonCount} اشتراك ينتهي خلال 3 أيام. `;
+    if (expiredCount > 0) body += `${expiredCount} اشتراك منتهي.`;
+    if (!body) body = `${urgentMembers.length} عضو يتطلب المتابعة.`;
+  } else if (lang === 'en') {
+    title = 'Club Al Oussoud - Membership Reminder';
+    if (unpaidCount > 0) body += `${unpaidCount} unpaid dues. `;
+    if (expiringSoonCount > 0) body += `${expiringSoonCount} expiring within 3 days. `;
+    if (expiredCount > 0) body += `${expiredCount} expired.`;
+    if (!body) body = `${urgentMembers.length} members require attention.`;
+  } else {
+    if (unpaidCount > 0) body += `${unpaidCount} cotisation(s) impayée(s). `;
+    if (expiringSoonCount > 0) body += `${expiringSoonCount} abonnement(s) expire(nt) sous 3 jours. `;
+    if (expiredCount > 0) body += `${expiredCount} abonnement(s) expiré(s).`;
+    if (!body) body = `${urgentMembers.length} membres nécessitent une relance.`;
+  }
+
+  await sendNativeNotification(title, body);
 }

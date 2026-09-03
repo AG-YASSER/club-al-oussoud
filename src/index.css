@@ -1,13 +1,42 @@
+@import "./globals.css";
 @import "tailwindcss";
 
 @layer base {
+  html {
+    height: -webkit-fill-available;
+  }
+
+  html, body, #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: var(--background);
+    color: var(--text-primary);
+  }
+
   body {
-    background-color: #09090b;
-    color: #f4f4f5;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Geist", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     padding: 0;
+    /* Prevent unwanted elastic rubber-band bounces that dislodge fixed navigation on iOS */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
   }
+}
+
+/* Safe Area Insets for all modern Android & iOS devices (notch, hole-punch cameras, dynamic islands) */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 1rem);
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.75rem);
 }

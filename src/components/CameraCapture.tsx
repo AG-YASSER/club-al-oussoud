@@ -1,53 +1,49 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  IconCamera,
-  IconRefresh,
-  IconCheck,
-  IconX,
-  IconUpload,
-  IconSparkles,
-  IconFocus2
-} from '@tabler/icons-react';
-import { Button, Card, CardHeader, CardTitle, CardContent } from './ui/components';
+import { Card, CardHeader, CardTitle, CardContent, Button } from './ui/shadcn';
+import { Camera, RefreshCw, SwitchCamera, Check, X, Sparkles, Target } from 'lucide-react';
 
 interface CameraCaptureProps {
-  onCapture: (webpBase64: string) => void;
+  onCapture: (webpDataUrl: string) => void;
   onCancel?: () => void;
-  initialImage?: string;
 }
 
-export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptureProps) {
+export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [imageSizeKb, setImageSizeKb] = useState<number | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
-  const startCamera = async () => {
-    setCameraError(null);
+  // Initialize Camera Stream with facingMode
+  const startCamera = async (facing: 'user' | 'environment' = cameraFacing) => {
     try {
+      setCameraError(null);
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
+
+      const constraints: MediaStreamConstraints = {
         video: {
+          facingMode: { ideal: facing },
           width: { ideal: 640 },
-          height: { ideal: 640 },
-          facingMode: 'user'
+          height: { ideal: 640 }
         },
         audio: false
-      });
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.play();
       }
     } catch (err: any) {
-      console.error('Camera access error:', err);
-      setCameraError('Webcam unavailable. Check permissions or upload an image file.');
+      console.error('Camera access failed:', err);
+      setCameraError("Impossible d'accéder à la caméra. Vérifiez les autorisations.");
     }
   };
 
@@ -59,13 +55,16 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
   };
 
   useEffect(() => {
-    if (!capturedImage) {
-      startCamera();
-    }
+    startCamera(cameraFacing);
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [cameraFacing]);
+
+  const toggleCameraFacing = () => {
+    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    setCameraFacing(nextFacing);
+  };
 
   const snapPhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -83,6 +82,12 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
     canvas.width = 400;
     canvas.height = 400;
 
+    // Flip horizontally only if using user (selfie) camera
+    if (cameraFacing === 'user') {
+      ctx.translate(400, 0);
+      ctx.scale(-1, 1);
+    }
+
     ctx.drawImage(video, startX, startY, size, size, 0, 0, 400, 400);
     const webpData = canvas.toDataURL('image/webp', 0.88);
     setCapturedImage(webpData);
@@ -98,37 +103,7 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
   const handleRetake = () => {
     setCapturedImage(null);
     setImageSizeKb(null);
-    startCamera();
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = canvasRef.current || document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const size = Math.min(img.width, img.height);
-        const startX = (img.width - size) / 2;
-        const startY = (img.height - size) / 2;
-
-        canvas.width = 400;
-        canvas.height = 400;
-        ctx.drawImage(img, startX, startY, size, size, 0, 0, 400, 400);
-
-        const webpData = canvas.toDataURL('image/webp', 0.88);
-        setCapturedImage(webpData);
-        setImageSizeKb(Math.round((webpData.length * 3) / 4 / 1024));
-        stopCamera();
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    startCamera(cameraFacing);
   };
 
   return (
@@ -139,34 +114,52 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
       transition={{ duration: 0.2 }}
       className="max-w-md w-full mx-auto"
     >
-      <Card className="border-zinc-800 bg-zinc-900/90 shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl overflow-hidden">
+      <Card className="border-zinc-800 bg-zinc-900/95 shadow-2xl backdrop-blur-2xl overflow-hidden">
         <CardHeader className="pb-3 border-b border-zinc-800/80 flex flex-row items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
-              <IconCamera className="w-5 h-5" />
+            <div className="p-2 bg-orange-500/10 border border-orange-500/20 rounded-xl text-orange-400">
+              <Camera className="w-5 h-5" />
             </div>
             <div>
-              <CardTitle className="text-base font-bold text-white tracking-tight">
-                Live Face Capture
+              <CardTitle className="text-sm font-bold text-white">
+                Photo du Membre
               </CardTitle>
-              <p className="text-[11px] text-zinc-400">Auto 1:1 square crop & WebP encoder</p>
+              <p className="text-[11px] text-zinc-400">
+                {cameraFacing === 'user' ? 'Caméra Avant (Selfie)' : 'Caméra Arrière'}
+              </p>
             </div>
           </div>
-          {onCancel && (
-            <button
-              onClick={() => {
-                stopCamera();
-                onCancel();
-              }}
-              className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition"
-            >
-              <IconX className="w-5 h-5" />
-            </button>
-          )}
+
+          <div className="flex items-center gap-1">
+            {!capturedImage && (
+              <button
+                type="button"
+                onClick={toggleCameraFacing}
+                className="text-zinc-300 hover:text-white p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition flex items-center gap-1 text-xs font-semibold"
+                title="Changer de caméra"
+              >
+                <SwitchCamera className="w-4 h-4 text-orange-400" />
+                <span className="text-[10px] hidden sm:inline">Changer</span>
+              </button>
+            )}
+
+            {onCancel && (
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  onCancel();
+                }}
+                className="text-zinc-400 hover:text-white p-2 rounded-lg hover:bg-zinc-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </CardHeader>
 
-        <CardContent className="p-5 space-y-4">
-          <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-inner scanner-grid">
+        <CardContent className="p-4 space-y-3">
+          <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-inner">
             <AnimatePresence mode="wait">
               {!capturedImage ? (
                 <motion.div
@@ -179,8 +172,8 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
                   {cameraError ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3">
                       <p className="text-xs text-amber-400 font-medium">{cameraError}</p>
-                      <Button variant="outline" size="sm" onClick={startCamera}>
-                        <IconRefresh className="w-4 h-4 mr-2" /> Retry Camera
+                      <Button variant="outline" size="sm" onClick={() => startCamera(cameraFacing)}>
+                        <RefreshCw className="w-4 h-4 mr-2" /> Réessayer
                       </Button>
                     </div>
                   ) : (
@@ -190,17 +183,12 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
                         autoPlay
                         playsInline
                         muted
-                        className="w-full h-full object-cover transform -scale-x-100"
+                        className={`w-full h-full object-cover ${cameraFacing === 'user' ? 'transform -scale-x-100' : ''}`}
                       />
-                      {/* Modern Target HUD Overlay */}
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-8">
-                        <div className="w-full h-full border border-emerald-500/30 rounded-full border-dashed animate-pulse flex items-center justify-center">
-                          <IconFocus2 className="w-12 h-12 text-emerald-400/40" />
+                        <div className="w-48 h-48 border-2 border-orange-500/40 rounded-full border-dashed animate-pulse flex items-center justify-center">
+                          <Target className="w-8 h-8 text-orange-400/40" />
                         </div>
-                      </div>
-                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-zinc-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-zinc-700/60 text-[10px] text-emerald-400 font-mono flex items-center gap-1.5 shadow-lg">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        LIVE STREAM (640×640)
                       </div>
                     </>
                   )}
@@ -214,12 +202,12 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
                 >
                   <img
                     src={capturedImage}
-                    alt="Member Snap"
+                    alt="Photo Membre"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute bottom-3 right-3 bg-zinc-950/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-emerald-500/30 text-[11px] font-mono text-emerald-400 flex items-center gap-1.5 shadow-xl">
-                    <IconSparkles className="w-3.5 h-3.5 text-emerald-400" />
-                    WebP {imageSizeKb ? `~${imageSizeKb} KB` : 'Ready'}
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    WebP {imageSizeKb ? `~${imageSizeKb} KB` : 'Prêt'}
                   </div>
                 </motion.div>
               )}
@@ -228,44 +216,42 @@ export function CameraCapture({ onCapture, onCancel, initialImage }: CameraCaptu
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          {/* Action Row */}
-          <div className="flex items-center gap-2.5 pt-1">
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 pt-1">
             {!capturedImage ? (
               <>
                 <Button
                   variant="default"
-                  className="flex-1 h-11 text-sm font-bold"
+                  className="flex-1 h-11 text-sm font-bold bg-orange-500 hover:bg-orange-600 text-white"
                   onClick={snapPhoto}
                   disabled={isCapturing || !!cameraError}
                 >
-                  <IconCamera className="w-4 h-4 mr-2" />
-                  Capture Member Photo
+                  <Camera className="w-4 h-4 mr-2" />
+                  Prendre la photo
                 </Button>
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <Button variant="outline" type="button" className="h-11 px-3.5">
-                    <IconUpload className="w-4 h-4" />
-                  </Button>
-                </label>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={toggleCameraFacing}
+                  className="h-11 px-4 border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                  title="Changer vers caméra avant / arrière"
+                >
+                  <SwitchCamera className="w-5 h-5 text-orange-400" />
+                </Button>
               </>
             ) : (
               <>
-                <Button variant="outline" className="flex-1 h-11" onClick={handleRetake}>
-                  <IconRefresh className="w-4 h-4 mr-2" />
-                  Retake Photo
+                <Button variant="outline" className="flex-1 h-11 border-zinc-700 text-zinc-200" onClick={handleRetake}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Reprendre
                 </Button>
                 <Button
                   variant="default"
-                  className="flex-1 h-11 font-bold"
+                  className="flex-1 h-11 font-bold bg-orange-500 hover:bg-orange-600 text-white"
                   onClick={() => onCapture(capturedImage)}
                 >
-                  <IconCheck className="w-4 h-4 mr-2" />
-                  Confirm Image
+                  <Check className="w-4 h-4 mr-2" />
+                  Valider la photo
                 </Button>
               </>
             )}

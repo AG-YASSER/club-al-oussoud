@@ -18,48 +18,56 @@ export interface Member {
   phone: string;
   emergencyContact: string;
   email?: string;
-  avatarWebP?: string; // WebP base64 encoded image
+  photo?: string | null; // Base64 WebP image. Explicitly set to null on soft delete to purge 95% storage!
   joinedDate: string; // YYYY-MM-DD
   planId: string;
   planName: string;
   startDate: string; // YYYY-MM-DD
   expiryDate: string; // YYYY-MM-DD
-  isPaid: boolean; // Tracking paid vs unpaid for paper notebook replacement
+  isPaid: boolean; // Tracking paid vs unpaid cash debt
   amountDue?: number;
   notes?: string;
+  isDeleted: boolean; // Soft delete flag
+  deletedAt?: string; // ISO or YYYY-MM-DD timestamp
   createdAt: number;
   updatedAt: number;
 }
 
-export interface CheckIn {
+export interface Subscription {
   id: string;
   memberId: string;
-  memberName: string;
-  memberAvatar?: string;
-  planName: string;
-  statusAtCheckIn: SubscriptionStatus;
-  timestamp: number;
-  dateStr: string; // YYYY-MM-DD
-  timeStr: string; // HH:mm:ss
-}
-
-export interface PaymentRecord {
-  id: string;
-  memberId: string;
-  memberName: string;
   planId: string;
   planName: string;
-  amount: number;
-  paymentMethod: 'cash' | 'card' | 'transfer' | 'upi_transfer';
-  timestamp: number;
-  dateStr: string;
-  validFrom: string;
-  validUntil: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  totalPrice: number; // Hardcoded snapshot at purchase time
+  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  createdAt: number;
 }
+
+export interface Payment {
+  id: string;
+  subscriptionId?: string;
+  memberId: string;
+  memberName: string;
+  amountPaid: number; // Stored numeric amount paid
+  paymentDate: string; // YYYY-MM-DD
+  paymentMethod: 'CASH'; // Strictly Cash-Only
+  note?: string;
+  timestamp: number;
+}
+
+// Backward compatibility alias for UI views
+export type PaymentRecord = Payment & {
+  planId?: string;
+  planName?: string;
+  amount: number; // Getter alias for amountPaid
+  dateStr: string; // Getter alias for paymentDate
+};
 
 export interface SyncQueueItem {
   id: string;
-  action: 'CREATE_MEMBER' | 'UPDATE_MEMBER' | 'CHECK_IN' | 'PAYMENT';
+  action: 'CREATE_MEMBER' | 'UPDATE_MEMBER' | 'PAYMENT' | 'SUBSCRIPTION';
   payload: any;
   timestamp: number;
   synced: boolean;
@@ -74,18 +82,19 @@ export interface AppSetting {
 export class GymDatabase extends Dexie {
   members!: Table<Member, string>;
   plans!: Table<MembershipPlan, string>;
-  checkIns!: Table<CheckIn, string>;
-  payments!: Table<PaymentRecord, string>;
+  subscriptions!: Table<Subscription, string>;
+  payments!: Table<Payment, string>;
   syncQueue!: Table<SyncQueueItem, string>;
   settings!: Table<AppSetting, string>;
 
   constructor() {
     super('GymReceptionDB');
-    this.version(3).stores({
-      members: 'id, fullName, phone, expiryDate, planId, isPaid, joinedDate, updatedAt',
+    // Version 4: Removed checkIns table completely, added subscriptions table, soft-delete & cash-only payments
+    this.version(4).stores({
+      members: 'id, fullName, phone, expiryDate, planId, isPaid, isDeleted, joinedDate, updatedAt',
       plans: 'id, name, durationMonths, price',
-      checkIns: 'id, memberId, timestamp, dateStr, statusAtCheckIn',
-      payments: 'id, memberId, timestamp, dateStr',
+      subscriptions: 'id, memberId, planId, startDate, endDate, status',
+      payments: 'id, subscriptionId, memberId, paymentDate, timestamp',
       syncQueue: 'id, action, timestamp, synced',
       settings: 'key'
     });
@@ -96,7 +105,6 @@ export const db = new GymDatabase();
 
 /**
  * Calculates remaining days and subscription status
- * Accepts either a Member object or an expiryDate string
  */
 export function getSubscriptionStatus(input: { expiryDate: string; isPaid?: boolean } | string): {
   status: SubscriptionStatus;
