@@ -421,6 +421,7 @@ export function App() {
                 onLanguageChange={handleSetLang}
                 notificationsEnabled={notificationsEnabled}
                 onToggleNotifications={setNotificationsEnabled}
+                onShowToast={showToast}
               />
             )}
           </main>

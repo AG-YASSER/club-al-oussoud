@@ -57,13 +57,15 @@ interface SettingsTabProps {
   onLanguageChange: (lang: SupportedLanguage) => void;
   notificationsEnabled: boolean;
   onToggleNotifications: (enabled: boolean) => void;
+  onShowToast?: (text: string, type?: "success" | "warning" | "expired") => void;
 }
 
 export function SettingsTab({
   plans,
   onPlansUpdated,
   lang,
-  onLanguageChange
+  onLanguageChange,
+  onShowToast,
 }: SettingsTabProps) {
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -547,6 +549,12 @@ export function SettingsTab({
             : `Synchronisation réussie (${res.count} membres) !`
         );
         onPlansUpdated();
+        const toastMsg = lang === "ar"
+          ? `تم بنجاح! تم استلام وتحديث ${res.count} عضو`
+          : `Succès ! ${res.count} membres mis à jour`;
+        if (onShowToast) {
+          onShowToast(toastMsg, "success");
+        }
         setTimeout(() => {
           setScannerStep('idle');
           setScannerStatusMsg('');
@@ -1570,7 +1578,7 @@ export function SettingsTab({
                 </div>
 
                 {/* Inline Status Callout */}
-                {scannerStep !== 'idle' && (
+                {scannerStep !== 'idle' && (scannerStep as any) !== 'complete' && (
                   <div className={`p-3 rounded-xl border text-xs font-bold text-center space-y-1 animate-in fade-in ${
                     scannerStep === 'complete'
                       ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]'
