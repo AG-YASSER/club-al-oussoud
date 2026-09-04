@@ -483,6 +483,11 @@ export function SettingsTab({
     } else {
       try {
         const res = await LocalSyncServer.startServer();
+        // Auto seed server payload
+        try {
+          const { compressed } = await generateOfflineSyncPayload();
+          await LocalSyncServer.setPayload({ payload: compressed });
+        } catch {}
         const port = res?.port || 8080;
         setIsServerRunning(true);
         setServerPort(port);
@@ -554,13 +559,21 @@ export function SettingsTab({
         setDiscoveredPeers([]);
         setIsDiscovering(true);
 
-        discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', (peer) => {
+        discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', async (peer) => {
           if (!peer || !peer.host) return;
           setDiscoveredPeers((prev) => {
             const exists = prev.some((p) => p.name === peer.name || (p.host === peer.host && p.port === peer.port));
             if (exists) return prev;
             return [...prev, peer];
           });
+
+          // DIRECT INSTANT AUTO-PULL: Pull data immediately without waiting for user click
+          try {
+            await handleSelectPeer(peer, 'pull');
+            await stopDiscoveryService();
+          } catch (autoPullErr) {
+            console.warn('Auto pull on peer found:', autoPullErr);
+          }
         });
 
         await LocalSyncServer.startDiscovery();

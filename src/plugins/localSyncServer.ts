@@ -3,6 +3,7 @@ import { registerPlugin, WebPlugin, PluginListenerHandle } from '@capacitor/core
 export interface LocalSyncServerPlugin {
   startServer(): Promise<{ port: number }>;
   stopServer(): Promise<void>;
+  setPayload?(options: { payload: string }): Promise<void>;
   startDiscovery(): Promise<void>;
   stopDiscovery(): Promise<void>;
   addListener(
@@ -72,17 +73,15 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
   async startDiscovery(): Promise<void> {
     this.isSearching = true;
 
-    // Fast candidate list
+    // Fast priority candidates
     const candidates = new Set<string>();
     candidates.add('127.0.0.1');
     candidates.add('localhost');
     if (typeof window !== 'undefined' && window.location.hostname) {
       candidates.add(window.location.hostname);
     }
-    // Android Hotspot default gateway
-    candidates.add('192.168.43.1');
+    candidates.add('192.168.43.1'); // Android hotspot
 
-    // Saved IP if any
     try {
       const saved = localStorage.getItem('cao_local_ip');
       if (saved) {
@@ -91,14 +90,14 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
       }
     } catch {}
 
-    // Check initial high-probability candidates in parallel
-    await this.testCandidates(Array.from(candidates));
+    // 1. Immediate priority test
+    await this.testCandidates(Array.from(candidates), 600);
 
-    // If still searching, scan subnet of current host or common router subnets
+    // 2. High-speed Subnet Sweep (parallel chunks of 30)
     if (this.isSearching) {
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
       const ipMatch = currentHost.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
-      
+
       const subnetHosts: string[] = [];
       if (ipMatch && ipMatch[1] !== '127.0.0') {
         const prefix = ipMatch[1];
@@ -106,22 +105,20 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
           subnetHosts.push(`${prefix}.${i}`);
         }
       } else {
-        // Common local Wi-Fi router ranges
-        const commonPrefixes = ['192.168.11', '192.168.1', '192.168.0', '192.168.43'];
-        for (const prefix of commonPrefixes) {
-          for (let i = 1; i <= 30; i++) {
-            subnetHosts.push(`${prefix}.${i}`);
+        const prefixes = ['192.168.1', '192.168.0', '192.168.43', '192.168.11', '10.0.0'];
+        for (const p of prefixes) {
+          for (let i = 1; i <= 40; i++) {
+            subnetHosts.push(`${p}.${i}`);
           }
-          // Also common high numbers
-          subnetHosts.push(`${prefix}.100`, `${prefix}.101`, `${prefix}.102`, `${prefix}.103`, `${prefix}.104`, `${prefix}.105`);
+          subnetHosts.push(`${p}.100`, `${p}.101`, `${p}.102`, `${p}.103`);
         }
       }
 
-      await this.testCandidates(subnetHosts, 700);
+      await this.testCandidates(subnetHosts, 400);
     }
   }
 
-  private async testCandidates(hosts: string[], timeoutMs: number = 1000) {
+  private async testCandidates(hosts: string[], timeoutMs: number = 500) {
     const discovered = new Set<string>();
 
     const checkHost = async (host: string) => {
@@ -135,8 +132,6 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
           const data = await res.json();
           if (data && (data.status === 'ok' || data.server)) {
             const peerName = data.server || `Club Al Oussoud Server (${host})`;
-            
-            // If server returned its own LAN IPs (e.g. from sync-server.mjs or phone)
             const reportedIps: string[] = Array.isArray(data.ips) ? data.ips : [];
             const bestHost = (host === '127.0.0.1' || host === 'localhost') && reportedIps.length > 0
               ? reportedIps[0]
@@ -156,8 +151,8 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
       } catch {}
     };
 
-    // Run in parallel chunks of 15
-    const chunkSize = 15;
+    // Parallel chunks of 30 for high-speed network detection
+    const chunkSize = 30;
     for (let i = 0; i < hosts.length; i += chunkSize) {
       if (!this.isSearching) break;
       const chunk = hosts.slice(i, i + chunkSize);
