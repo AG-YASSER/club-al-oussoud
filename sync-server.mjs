@@ -60,7 +60,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/sync') {
+  if (url.pathname === '/api/sync' || url.pathname === '/api/sync-export') {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({

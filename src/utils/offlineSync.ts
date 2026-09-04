@@ -421,3 +421,79 @@ class TabBroadcastManager {
 
 export const tabBroadcastSync = new TabBroadcastManager();
 
+
+
+/**
+ * Direct deterministic pairing fetch to /api/sync-export or /api/sync
+ * Strict 5-second timeout, CORS-friendly, explicit error handling.
+ */
+export async function fetchSyncPayloadFromUrl(
+  targetUrl: string
+): Promise<{ success: boolean; message: string; count: number }> {
+  let cleaned = targetUrl.trim();
+  if (!cleaned) {
+    return { success: false, message: 'العنوان المستهدف غير محدد', count: 0 };
+  }
+
+  // Support JSON payload {"url": "http://192.168.1.50:8080", "token": "..."}
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed.url) cleaned = parsed.url;
+    } catch {}
+  }
+
+  // Ensure protocol
+  if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+    cleaned = `http://${cleaned}`;
+  }
+  // Ensure port
+  const urlObj = new URL(cleaned);
+  if (!urlObj.port) {
+    urlObj.port = '8080';
+  }
+
+  const baseOrigin = `${urlObj.protocol}//${urlObj.hostname}:${urlObj.port}`;
+  const endpoints = [`${baseOrigin}/api/sync-export`, `${baseOrigin}/api/sync`];
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  let lastError = '';
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+
+      if (res.ok) {
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        if (data && data.payload) {
+          return await applyOfflineSyncPayload(data.payload);
+        }
+      } else {
+        lastError = `استجابة الخادم: ${res.status}`;
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        clearTimeout(timeoutId);
+        return {
+          success: false,
+          message: 'انتهت المهلة (5 ثوانٍ). تأكد أن كلا الجهازين متصلان بنفس شبكة Wi-Fi تماماً.',
+          count: 0
+        };
+      }
+      lastError = e.message || 'تعذر الاتصال';
+    }
+  }
+
+  clearTimeout(timeoutId);
+  return {
+    success: false,
+    message: `فشل الاتصال (${lastError}). تأكد أن الجهازين متصلان بنفس شبكة Wi-Fi.`,
+    count: 0
+  };
+}
