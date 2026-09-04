@@ -116,7 +116,7 @@ export function SettingsTab({
       return '';
     }
   });
-  const [showManualIp, setShowManualIp] = useState(false);
+  const [showManualIp, setShowManualIp] = useState(true);
   const [ipSyncAction, setIpSyncAction] = useState<'push' | 'pull' | 'ping' | null>(null);
   const [ipSyncStatus, setIpSyncStatus] = useState<{
     type: 'success' | 'error' | 'info';
@@ -571,12 +571,17 @@ export function SettingsTab({
   const handleToggleDiscovery = async () => {
     if (isDiscovering) {
       await stopDiscoveryService();
-    } else {
-      try {
-        await stopDiscoveryService();
-        setDiscoveredPeers([]);
-        setIsDiscovering(true);
+      setIsDiscovering(false);
+      return;
+    }
 
+    try {
+      await stopDiscoveryService();
+      setDiscoveredPeers([]);
+      setIsDiscovering(true);
+
+      // 1. Android Native NSD Discovery
+      if (Capacitor.isNativePlatform()) {
         discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', (peer) => {
           if (!peer || !peer.host) return;
           setDiscoveredPeers((prev) => {
@@ -587,19 +592,36 @@ export function SettingsTab({
         });
 
         await LocalSyncServer.startDiscovery();
-      } catch (err: any) {
-        console.error('Failed to start discovery:', err);
+
+        // Safe timeout: Stop discovery after 12 seconds so it never spins infinitely
+        setTimeout(() => {
+          setIsDiscovering(false);
+          stopDiscoveryService();
+        }, 12000);
+      } else {
+        // 2. Web Browser Context:
+        // A web browser cannot do UDP multicast or subnet scans from HTTPS.
+        // Check if there is a saved or manually entered IP to pull from directly.
+        await new Promise((r) => setTimeout(r, 600));
         setIsDiscovering(false);
-        showAlert(
-          lang === 'ar' ? 'فشل البحث التلقائي' : 'Discovery Failed',
-          err?.message || (lang === 'ar' ? 'حدث خطأ أثناء البحث عن الأجهزة القريبة' : 'Error discovering nearby devices'),
-          'danger'
-        );
+        if (localIpInput.trim()) {
+          await handlePullFromIp();
+        } else {
+          setShowManualIp(true);
+        }
       }
+    } catch (err: any) {
+      console.error('Failed to start discovery:', err);
+      setIsDiscovering(false);
+      showAlert(
+        lang === 'ar' ? 'فحص الشبكة' : 'Network Check',
+        err?.message || (lang === 'ar' ? 'أدخل عنوان IP الجهاز في الخانة أدناه' : 'Enter device IP below'),
+        'warning'
+      );
     }
   };
 
-  // Select peer from discovery list (tappable row)
+    // Select peer from discovery list (tappable row)
   const handleSelectPeer = async (peer: { name: string; host: string; port: number }, action: 'pull' | 'push' = 'pull') => {
     const formatted = `${peer.host}:${peer.port}`;
     setLocalIpInput(formatted);
@@ -1348,9 +1370,7 @@ export function SettingsTab({
                 stopCameraScanner();
                 setSyncTab('wifi');
                 // Automatically kick off discovery for instant results on web & iPhone
-                setTimeout(() => {
-                  handleToggleDiscovery();
-                }, 100);
+                // Do not run automatic discovery loop
               }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 syncTab === 'wifi'
