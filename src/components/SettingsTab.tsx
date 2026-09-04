@@ -1466,109 +1466,97 @@ export function SettingsTab({
             </div>
           )}
 
-          {/* TAB 3: Direct Wireless Wi-Fi Sync */}
+          {/* TAB 3: Direct Wireless Wi-Fi Sync - Sleek Unified 1-Button UX */}
           {syncTab === 'wifi' && (
             <div className="space-y-3.5 animate-in fade-in duration-150">
 
-              {/* Header Info */}
-              <div className="p-3 rounded-xl border border-[var(--primary-border)] bg-[var(--primary-bg)]">
-                <div className="flex items-center gap-2 font-bold text-[var(--primary)] text-xs mb-1">
-                  <Wifi className="w-4 h-4" />
-                  <span>{tTexts.wifiSyncTitle}</span>
-                </div>
-                <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
-                  {tTexts.wifiSyncDesc}
-                </p>
-              </div>
-
-              {/* SECTION 1: Host Mode (Become Server) */}
-              <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] space-y-3 shadow-sm">
+              {/* 1. Primary Action: Unified 1-Tap Sync Card */}
+              <div className="p-4 rounded-2xl border border-[var(--primary-border)] bg-[var(--card)] relative overflow-hidden shadow-lg space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Server className="w-4 h-4 text-[var(--primary)]" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[var(--primary-bg)] border border-[var(--primary-border)] flex items-center justify-center text-[var(--primary)] shadow-sm">
+                      <Wifi className="w-5 h-5" />
+                    </div>
                     <div>
-                      <h4 className="text-xs font-bold text-[var(--text-primary)]">
-                        {tTexts.hostModeTitle}
+                      <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
+                        {lang === 'ar' ? 'المزامنة اللاسلكية المباشرة' : 'Synchronisation Wi-Fi Directe'}
                       </h4>
                       <p className="text-[10px] text-[var(--text-muted)]">
-                        {tTexts.hostModeDesc}
+                        {lang === 'ar' ? 'نقل فوري للبيانات بين الأجهزة على نفس الشبكة' : 'Transfert instantané entre appareils sur le même réseau'}
                       </p>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 flex-shrink-0 ${
+
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 border transition-all ${
                     isServerRunning
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-zinc-800 text-zinc-400'
+                      ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)] shadow-sm'
+                      : isDiscovering
+                      ? 'bg-[var(--primary-bg)] text-[var(--primary)] border-[var(--primary-border)] animate-pulse'
+                      : 'bg-[var(--surface)] text-[var(--text-muted)] border-[var(--border)]'
                   }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isServerRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
-                    <span>{isServerRunning ? tTexts.serverActive : tTexts.serverStopped}</span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      isServerRunning ? 'bg-[var(--success)] animate-ping' : isDiscovering ? 'bg-[var(--primary)] animate-pulse' : 'bg-zinc-500'
+                    }`} />
+                    <span>
+                      {isServerRunning
+                        ? (lang === 'ar' ? 'مفعل وجاهز' : 'Actif & Prêt')
+                        : isDiscovering
+                        ? (lang === 'ar' ? 'جارٍ الاتصال...' : 'Connexion...')
+                        : (lang === 'ar' ? 'غير متصل' : 'En attente')}
+                    </span>
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    size="sm"
-                    onClick={handleToggleServer}
-                    className={`h-9 px-4 text-xs font-bold transition-all shadow-sm w-full flex items-center justify-center gap-2 ${
-                      isServerRunning
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
-                  >
-                    <Server className="w-4 h-4" />
-                    <span>{isServerRunning ? tTexts.stopServer : tTexts.becomeServer}</span>
-                  </Button>
+                {/* Main Action Button */}
+                <div className="pt-1">
+                  {!isServerRunning ? (
+                    <Button
+                      size="sm"
+                      onClick={handleToggleServer}
+                      className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
+                    >
+                      <Wifi className="w-4 h-4" />
+                      <span>{lang === 'ar' ? 'بدء المشاركة اللاسلكية بنقرة واحدة' : 'Démarrer le partage en 1 clic'}</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={handleToggleServer}
+                      className="w-full h-10 text-xs font-bold rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white border border-[var(--danger-border)] flex items-center justify-center gap-2 transition-all active:scale-98"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>{lang === 'ar' ? 'إيقاف المشاركة' : 'Arrêter le partage'}</span>
+                    </Button>
+                  )}
                 </div>
 
-                {/* Live server info when running */}
+                {/* Active Server Status Callout */}
                 {isServerRunning && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2 animate-in fade-in">
-                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>
-                        {lang === 'ar'
-                          ? '✅ هذا الهاتف جاهز الآن لنقل البيانات!'
-                          : lang === 'en'
-                          ? '✅ This phone is ready to transfer data!'
-                          : '✅ Ce téléphone est prêt à transmettre les données !'}
-                      </span>
+                  <div className="p-3 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] space-y-1.5 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-[var(--success)] font-bold text-xs">
+                      <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
+                      <span>{lang === 'ar' ? '✅ هذا الجهاز يشارك البيانات الآن!' : '✅ Cet appareil partage les données !'}</span>
                     </div>
-
                     <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
                       {lang === 'ar'
-                        ? 'اترك هذه الشاشة مفتوحة، وافتح التطبيق في الهاتف الثاني واضغط على (البحث عن الهاتف الآخر) في الخطوة 2 بالأسفل.'
-                        : lang === 'en'
-                        ? 'Keep this screen open. On the other phone, tap "Search For Phone" in step 2 below.'
-                        : 'Laissez cet écran ouvert. Sur le 2ème téléphone, appuyez sur "Rechercher l appareil" ci-dessous.'}
+                        ? 'اترك هذه النافذة مفتوحة، وافتح الهاتف الثاني واضغط على (سحب البيانات) بالأسفل.'
+                        : 'Laissez cette fenêtre ouverte. Sur le 2ème téléphone, appuyez sur (Télécharger les données) ci-dessous.'}
                     </p>
-
-                    {serverIps.length > 0 && (
-                      <div className="pt-1.5 border-t border-emerald-500/20 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                        <span>{lang === 'ar' ? 'عنوان الهاتف في الشبكة:' : 'Adresse locale:'}</span>
-                        <div className="flex gap-1">
-                          {serverIps.map((ip) => (
-                            <span key={ip} className="font-mono px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text-primary)] border border-[var(--border)] font-bold">
-                              {ip}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* SECTION 2: Auto-Discovery & Peers */}
-              <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] space-y-3 shadow-sm">
+              {/* 2. Receiver Section: Auto Detect & Instant Pull */}
+              <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] space-y-3 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-amber-400" />
+                    <Radio className="w-4 h-4 text-[var(--primary)]" />
                     <div>
                       <h4 className="text-xs font-bold text-[var(--text-primary)]">
-                        {tTexts.discoverModeTitle}
+                        {lang === 'ar' ? 'استلام البيانات في الهاتف الآخر' : 'Réception sur l autre appareil'}
                       </h4>
                       <p className="text-[10px] text-[var(--text-muted)]">
-                        {tTexts.discoverModeDesc}
+                        {lang === 'ar' ? 'البحث التلقائي عن الهاتف الأول وسحب المشتركين' : 'Détection automatique et téléchargement des membres'}
                       </p>
                     </div>
                   </div>
@@ -1577,89 +1565,69 @@ export function SettingsTab({
                 <Button
                   size="sm"
                   onClick={handleToggleDiscovery}
-                  className={`h-9 px-4 text-xs font-bold transition-all w-full flex items-center justify-center gap-2 ${
+                  className={`w-full h-10 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
                     isDiscovering
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse'
-                      : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-sm'
+                      ? 'bg-[var(--primary-bg)] text-[var(--primary)] border border-[var(--primary-border)] animate-pulse'
+                      : 'bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] border border-[var(--border)]'
                   }`}
                 >
                   {isDiscovering ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{tTexts.stopDiscoveryBtn}</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)]" />
+                      <span>{lang === 'ar' ? 'جارٍ البحث عن الأجهزة...' : 'Recherche en cours...'}</span>
                     </>
                   ) : (
                     <>
-                      <Search className="w-4 h-4" />
-                      <span>{tTexts.findNearby}</span>
+                      <Search className="w-4 h-4 text-[var(--primary)]" />
+                      <span>{lang === 'ar' ? 'البحث عن الجهاز وسحب البيانات' : 'Rechercher et synchroniser'}</span>
                     </>
                   )}
                 </Button>
 
-                {/* Scanning indicator */}
-                {isDiscovering && (
-                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center justify-center gap-2 animate-pulse font-medium">
-                    <Radio className="w-4 h-4 animate-spin" />
-                    <span>{tTexts.searchingPeers}</span>
-                  </div>
-                )}
-
-                {/* Discovered Peers */}
+                {/* Discovered Peers List */}
                 {discoveredPeers.length > 0 ? (
                   <div className="space-y-2 pt-1">
                     <span className="text-[10px] font-bold text-[var(--text-muted)] block uppercase">
-                      {lang === 'ar' ? 'الأجهزة المكتشفة (اضغط للمزامنة):' : 'Discovered Devices (tap to sync):'}
+                      {lang === 'ar' ? 'الأجهزة المتصلة المتاحة:' : 'Appareils détectés :'}
                     </span>
                     <div className="space-y-2 max-h-56 overflow-y-auto">
                       {discoveredPeers.map((peer) => (
                         <div
                           key={`${peer.host}:${peer.port}`}
-                          className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 transition flex items-center justify-between gap-2"
+                          className="p-3 rounded-xl border border-[var(--primary-border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] transition flex items-center justify-between gap-2 shadow-sm"
                         >
-                          <div
-                            onClick={() => handleSelectPeer(peer, 'pull')}
-                            className="cursor-pointer flex-1 min-w-0"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Smartphone className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                              <span className="font-bold text-xs text-[var(--text-primary)] truncate">
-                                {peer.name}
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <Smartphone className="w-4 h-4 text-[var(--primary)] flex-shrink-0" />
+                            <div className="truncate">
+                              <span className="font-bold text-xs text-[var(--text-primary)] block truncate">
+                                {peer.name || (lang === 'ar' ? 'هاتف نادي الأسود' : 'Appareil Club Al Oussoud')}
+                              </span>
+                              <span className="text-[10px] text-[var(--text-muted)] block truncate font-mono">
+                                {peer.host}
                               </span>
                             </div>
-                            <span className="text-[10px] font-mono text-[var(--text-muted)] block truncate mt-0.5">
-                              {peer.host}:{peer.port}
-                            </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <Button
-                              size="sm"
-                              onClick={() => handleSelectPeer(peer, 'pull')}
-                              disabled={ipSyncAction !== null}
-                              className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-sm"
-                            >
-                              <ArrowDownLeft className={`w-3.5 h-3.5 ${ipSyncAction === 'pull' ? 'animate-bounce' : ''}`} />
-                              <span>{tTexts.syncWithDevice}</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => handleSelectPeer(peer, 'push')}
-                              disabled={ipSyncAction !== null}
-                              className="h-8 px-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1 shadow-sm"
-                            >
-                              <ArrowUpRight className={`w-3.5 h-3.5 ${ipSyncAction === 'push' ? 'animate-bounce' : ''}`} />
-                              <span>{tTexts.pushToDevice}</span>
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSelectPeer(peer, 'pull')}
+                            disabled={ipSyncAction !== null}
+                            className="h-8 px-3.5 text-xs font-bold rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white flex items-center gap-1.5 shadow-sm active:scale-98"
+                          >
+                            <ArrowDownLeft className={`w-3.5 h-3.5 ${ipSyncAction === 'pull' ? 'animate-bounce' : ''}`} />
+                            <span>{lang === 'ar' ? 'سحب البيانات الآن' : 'Télécharger'}</span>
+                          </Button>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : (
                   !isDiscovering && (
-                    <div className="text-[10px] text-[var(--text-muted)] text-center py-1">
-                      {tTexts.noPeersFound}
-                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] text-center py-1">
+                      {lang === 'ar'
+                        ? 'تأكد من تشغيل المشاركة في الهاتف الأول والاتصال بنفس الشبكة.'
+                        : 'Activez le partage sur le 1er appareil puis lancez la recherche.'}
+                    </p>
                   )
                 )}
               </div>
