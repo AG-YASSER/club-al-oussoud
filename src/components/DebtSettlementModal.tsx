@@ -23,7 +23,7 @@ export function DebtSettlementModal({
   lang = 'fr'
 }: DebtSettlementModalProps) {
   const currentDebt = member?.amountDue || 0;
-  const [payAmount, setPayAmount] = useState<number>(currentDebt);
+  const [payAmount, setPayAmount] = useState<string | number>(currentDebt);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,9 +145,13 @@ export function DebtSettlementModal({
           <div className="flex items-center gap-2">
             <Input
               type="number"
-              min="1"
+              min="0"
               value={payAmount}
-              onChange={(e) => setPayAmount(Number(e.target.value))}
+              onChange={(e) => {
+                const clean = e.target.value.replace(/^0+(?=\d)/, '');
+                setPayAmount(clean);
+              }}
+              onFocus={(e) => e.target.select()}
               placeholder="0"
               className="bg-[var(--card-solid)] border-[var(--border)] text-[var(--text-primary)] font-mono text-base font-black h-11 text-center"
             />

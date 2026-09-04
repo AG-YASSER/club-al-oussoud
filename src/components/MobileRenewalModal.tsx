@@ -44,7 +44,7 @@ export function MobileRenewalModal({
   const appliedCredit = Math.min(existingCredit, totalPrice);
   const netDueAfterCredit = Math.max(0, totalPrice - appliedCredit);
 
-  const [customPaidAmount, setCustomPaidAmount] = useState<number>(netDueAfterCredit);
+  const [customPaidAmount, setCustomPaidAmount] = useState<string | number>(netDueAfterCredit);
 
   useEffect(() => {
     if (selectedPlan) {
@@ -257,7 +257,7 @@ export function MobileRenewalModal({
                   <div className="font-bold text-xs text-[var(--text-primary)] truncate">{p.name}</div>
                   <div className="flex items-center justify-between mt-1">
                     <span className="font-mono text-[var(--primary)] font-black text-xs">{p.price} DH</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{p.durationMonths} {lang === 'ar' ? 'أشهر' : lang === 'en' ? 'mo' : 'mois'}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">{p.durationMonths} {lang === 'ar' ? (p.durationMonths === 1 ? 'شهر' : 'أشهر') : lang === 'en' ? 'mo' : 'mois'}</span>
                   </div>
                 </button>
               );
@@ -356,7 +356,11 @@ export function MobileRenewalModal({
               type="number"
               min="0"
               value={customPaidAmount}
-              onChange={(e) => setCustomPaidAmount(Number(e.target.value))}
+              onChange={(e) => {
+                const clean = e.target.value.replace(/^0+(?=\d)/, '');
+                setCustomPaidAmount(clean);
+              }}
+              onFocus={(e) => e.target.select()}
               placeholder="0"
               className="bg-[var(--surface)] border-[var(--border)] text-[var(--text-primary)] font-mono text-base font-black h-11 text-center"
             />

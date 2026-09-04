@@ -66,13 +66,13 @@ export function SettingsTab({
 }: SettingsTabProps) {
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editDuration, setEditDuration] = useState<number>(1);
-  const [editPrice, setEditPrice] = useState<number>(0);
+  const [editDuration, setEditDuration] = useState<string | number>(1);
+  const [editPrice, setEditPrice] = useState<string | number>(0);
 
   const [showAddPlan, setShowAddPlan] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newDuration, setNewDuration] = useState(1);
-  const [newPrice, setNewPrice] = useState(250);
+  const [newDuration, setNewDuration] = useState<string | number>(1);
+  const [newPrice, setNewPrice] = useState<string | number>(250);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
 
   // App-styled Modals
@@ -654,8 +654,8 @@ export function SettingsTab({
     if (!editingPlanId || !editName.trim()) return;
     await db.plans.update(editingPlanId, {
       name: editName.trim(),
-      durationMonths: editDuration,
-      price: editPrice
+      durationMonths: Math.max(1, Number(editDuration) || 1),
+      price: Math.max(0, Number(editPrice) || 0)
     });
     setEditingPlanId(null);
     onPlansUpdated();
@@ -688,8 +688,8 @@ export function SettingsTab({
     await db.plans.add({
       id: newId,
       name: newName.trim(),
-      durationMonths: newDuration,
-      price: newPrice,
+      durationMonths: Math.max(1, Number(newDuration) || 1),
+      price: Math.max(0, Number(newPrice) || 0),
       description: `Boutique ${newName.trim()}`,
       features: []
     });
@@ -988,7 +988,9 @@ export function SettingsTab({
                   type="number"
                   min={1}
                   value={newDuration}
-                  onChange={(e) => setNewDuration(Number(e.target.value))}
+                  onChange={(e) => setNewDuration(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="1"
                   className="h-8 text-xs bg-[var(--card)] border-[var(--border)]"
                 />
               </div>
@@ -1000,7 +1002,9 @@ export function SettingsTab({
                   type="number"
                   min={0}
                   value={newPrice}
-                  onChange={(e) => setNewPrice(Number(e.target.value))}
+                  onChange={(e) => setNewPrice(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0"
                   className="h-8 text-xs bg-[var(--card)] border-[var(--border)]"
                 />
               </div>
@@ -1043,22 +1047,30 @@ export function SettingsTab({
                       type="number"
                       min={1}
                       value={editDuration}
-                      onChange={(e) => setEditDuration(Number(e.target.value))}
+                      onChange={(e) => setEditDuration(e.target.value.replace(/^0+(?=\d)/, ''))}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="1"
                       className="h-7 text-xs bg-[var(--surface)] border-[var(--border)]"
                     />
                     <Input
                       type="number"
                       min={0}
                       value={editPrice}
-                      onChange={(e) => setEditPrice(Number(e.target.value))}
+                      onChange={(e) => setEditPrice(e.target.value.replace(/^0+(?=\d)/, ''))}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
                       className="h-7 text-xs bg-[var(--surface)] border-[var(--border)]"
                     />
                   </div>
                 ) : (
                   <div>
                     <div className="text-xs font-bold text-[var(--text-primary)]">{plan.name}</div>
-                    <div className="text-[10px] text-[var(--text-muted)]">
-                      {plan.durationMonths} {tTexts.monthUnit} • <span className="text-[var(--primary)] font-bold">{plan.price} DH</span>
+                    <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5 font-mono">
+                      <span className="text-[var(--primary)] font-bold">{plan.price} DH</span>
+                      <span className="text-zinc-600 font-sans">•</span>
+                      <span className="text-[var(--text-secondary)] font-sans">
+                        {plan.durationMonths} {lang === 'ar' ? (plan.durationMonths === 1 ? 'شهر' : 'أشهر') : tTexts.monthUnit}
+                      </span>
                     </div>
                   </div>
                 )}
