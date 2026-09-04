@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { LocalSyncServer } from '../plugins/localSyncServer';
+import { webP2pSync, WebSyncStatus } from '../utils/webP2pSync';
 import { SupportedLanguage } from '../utils/i18n';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -124,6 +125,13 @@ export function SettingsTab({
   } | null>(null);
   const [isFileImporting, setIsFileImporting] = useState(false);
 
+  // Instant WebRTC Sync States
+  const [webSyncCode, setWebSyncCode] = useState<string>('');
+  const [partnerSyncCode, setPartnerSyncCode] = useState<string>('');
+  const [webSyncStatus, setWebSyncStatus] = useState<WebSyncStatus>('idle');
+  const [webSyncMessage, setWebSyncMessage] = useState<string>('');
+  const [isHostingWebSync, setIsHostingWebSync] = useState(false);
+
   // Embedded LocalSyncServer & NSD Discovery States
   const [isServerRunning, setIsServerRunning] = useState(false);
   const [serverPort, setServerPort] = useState<number | null>(null);
@@ -170,6 +178,53 @@ export function SettingsTab({
     });
     return () => { unsub(); };
   }, [lang, onPlansUpdated]);
+
+  // WebRTC listeners for instant cross-phone sync
+  useEffect(() => {
+    const unsubStatus = webP2pSync.onStatusChange((status, msg) => {
+      setWebSyncStatus(status);
+      setWebSyncMessage(msg);
+    });
+
+    const unsubSync = webP2pSync.onSyncResult((res) => {
+      if (res.success) {
+        onPlansUpdated();
+        setBackupStatus(
+          lang === 'ar'
+            ? `تم استلام وتحديث ${res.count} عضو بنجاح!`
+            : lang === 'en'
+            ? `Received and updated ${res.count} members!`
+            : `Mise à jour réussie (${res.count} membres) !`
+        );
+        setTimeout(() => setBackupStatus(null), 5000);
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubSync();
+    };
+  }, [lang, onPlansUpdated]);
+
+  // Handle start Web Host
+  const handleStartWebHosting = async () => {
+    if (isHostingWebSync) {
+      webP2pSync.destroy();
+      setIsHostingWebSync(false);
+      setWebSyncCode('');
+      return;
+    }
+
+    setIsHostingWebSync(true);
+    const code = await webP2pSync.startHosting();
+    setWebSyncCode(code);
+  };
+
+  // Handle connect to partner code
+  const handleConnectPartner = async () => {
+    if (!partnerSyncCode.trim()) return;
+    await webP2pSync.connectToCode(partnerSyncCode);
+  };
 
   // Cleanup camera scanner on unmount or tab switch
   const stopCameraScanner = async () => {
@@ -1493,12 +1548,12 @@ export function SettingsTab({
             </div>
           )}
 
-          {/* TAB 3: Direct Wireless Wi-Fi Sync - Sleek Unified 1-Button UX */}
+          {/* TAB 3: Direct Wireless Wi-Fi Sync - Instant Auto-Connect & Zero Manual IP */}
           {syncTab === 'wifi' && (
-            <div className="space-y-3.5 animate-in fade-in duration-150">
+            <div className="space-y-4 animate-in fade-in duration-150">
 
-              {/* 1. Primary Action: Unified 1-Tap Sync Card */}
-              <div className="p-4 rounded-2xl border border-[var(--primary-border)] bg-[var(--card)] relative overflow-hidden shadow-lg space-y-3">
+              {/* CARD 1: SENDER PHONE (Broadcaster) */}
+              <div className="p-4 rounded-2xl border border-[var(--primary-border)] bg-[var(--card)] space-y-3 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl bg-[var(--primary-bg)] border border-[var(--primary-border)] flex items-center justify-center text-[var(--primary)] shadow-sm">
@@ -1506,224 +1561,124 @@ export function SettingsTab({
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
-                        {lang === 'ar' ? 'المزامنة اللاسلكية المباشرة' : 'Synchronisation Wi-Fi Directe'}
+                        {lang === 'ar' ? '1. الهاتف الأول (مشاركة البيانات)' : '1. Premier Téléphone (Partage)'}
                       </h4>
                       <p className="text-[10px] text-[var(--text-muted)]">
-                        {lang === 'ar' ? 'نقل فوري للبيانات بين الأجهزة على نفس الشبكة' : 'Transfert instantané entre appareils sur le même réseau'}
+                        {lang === 'ar' ? 'لبدء بث البيانات إلى الهاتف الآخر فورياً' : 'Pour transmettre les données au 2ème téléphone'}
                       </p>
                     </div>
                   </div>
 
                   <span className={`px-2.5 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 border transition-all ${
-                    isServerRunning
-                      ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)] shadow-sm'
-                      : isDiscovering
-                      ? 'bg-[var(--primary-bg)] text-[var(--primary)] border-[var(--primary-border)] animate-pulse'
+                    isHostingWebSync
+                      ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]'
                       : 'bg-[var(--surface)] text-[var(--text-muted)] border-[var(--border)]'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${
-                      isServerRunning ? 'bg-[var(--success)] animate-ping' : isDiscovering ? 'bg-[var(--primary)] animate-pulse' : 'bg-zinc-500'
+                      isHostingWebSync ? 'bg-[var(--success)] animate-ping' : 'bg-zinc-500'
                     }`} />
                     <span>
-                      {isServerRunning
-                        ? (lang === 'ar' ? 'مفعل وجاهز' : 'Actif & Prêt')
-                        : isDiscovering
-                        ? (lang === 'ar' ? 'جارٍ الاتصال...' : 'Connexion...')
-                        : (lang === 'ar' ? 'غير متصل' : 'En attente')}
+                      {isHostingWebSync
+                        ? (lang === 'ar' ? 'جاهز للمشاركة' : 'Prêt à partager')
+                        : (lang === 'ar' ? 'متوقف' : 'Inactif')}
                     </span>
                   </span>
                 </div>
 
-                {/* Main Action Button */}
-                <div className="pt-1">
-                  {!isServerRunning ? (
-                    <Button
-                      size="sm"
-                      onClick={handleToggleServer}
-                      className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
-                    >
-                      <Wifi className="w-4 h-4" />
-                      <span>{lang === 'ar' ? 'بدء المشاركة اللاسلكية بنقرة واحدة' : 'Démarrer le partage en 1 clic'}</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={handleToggleServer}
-                      className="w-full h-10 text-xs font-bold rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white border border-[var(--danger-border)] flex items-center justify-center gap-2 transition-all active:scale-98"
-                    >
-                      <X className="w-4 h-4" />
-                      <span>{lang === 'ar' ? 'إيقاف المشاركة' : 'Arrêter le partage'}</span>
-                    </Button>
-                  )}
-                </div>
-
-                {/* Active Server Status Callout */}
-                {isServerRunning && (
-                  <div className="p-3 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] space-y-1.5 animate-in fade-in">
-                    <div className="flex items-center gap-2 text-[var(--success)] font-bold text-xs">
-                      <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
-                      <span>{lang === 'ar' ? 'هذا الجهاز يشارك البيانات الآن!' : 'Cet appareil partage les données !'}</span>
-                    </div>
-                    <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                      {lang === 'ar'
-                        ? 'اترك هذه النافذة مفتوحة، وافتح الهاتف الثاني واضغط على (سحب البيانات) بالأسفل.'
-                        : 'Laissez cette fenêtre ouverte. Sur le 2ème téléphone, appuyez sur (Télécharger les données) ci-dessous.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* 2. Receiver Section: Auto Detect & Instant Pull */}
-              <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] space-y-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-[var(--primary)]" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[var(--text-primary)]">
-                        {lang === 'ar' ? 'استلام البيانات في الهاتف الآخر' : 'Réception sur l autre appareil'}
-                      </h4>
-                      <p className="text-[10px] text-[var(--text-muted)]">
-                        {lang === 'ar' ? 'البحث التلقائي عن الهاتف الأول وسحب المشتركين' : 'Détection automatique et téléchargement des membres'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <Button
-                  size="sm"
-                  onClick={handleToggleDiscovery}
-                  className={`w-full h-10 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                    isDiscovering
-                      ? 'bg-[var(--primary-bg)] text-[var(--primary)] border border-[var(--primary-border)] animate-pulse'
-                      : 'bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] border border-[var(--border)]'
-                  }`}
-                >
-                  {isDiscovering ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)]" />
-                      <span>{lang === 'ar' ? 'جارٍ البحث عن الأجهزة...' : 'Recherche en cours...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4 text-[var(--primary)]" />
-                      <span>{lang === 'ar' ? 'البحث عن الجهاز وسحب البيانات' : 'Rechercher et synchroniser'}</span>
-                    </>
-                  )}
-                </Button>
-
-                {/* Discovered Peers List */}
-                {discoveredPeers.length > 0 ? (
-                  <div className="space-y-2 pt-1">
-                    <span className="text-[10px] font-bold text-[var(--text-muted)] block uppercase">
-                      {lang === 'ar' ? 'الأجهزة المتصلة المتاحة:' : 'Appareils détectés :'}
-                    </span>
-                    <div className="space-y-2 max-h-56 overflow-y-auto">
-                      {discoveredPeers.map((peer) => (
-                        <div
-                          key={`${peer.host}:${peer.port}`}
-                          className="p-3 rounded-xl border border-[var(--primary-border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] transition flex items-center justify-between gap-2 shadow-sm"
-                        >
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <Smartphone className="w-4 h-4 text-[var(--primary)] flex-shrink-0" />
-                            <div className="truncate">
-                              <span className="font-bold text-xs text-[var(--text-primary)] block truncate">
-                                {peer.name || (lang === 'ar' ? 'هاتف نادي الأسود' : 'Appareil Club Al Oussoud')}
-                              </span>
-                              <span className="text-[10px] text-[var(--text-muted)] block truncate font-mono">
-                                {peer.host}
-                              </span>
-                            </div>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            onClick={() => handleSelectPeer(peer, 'pull')}
-                            disabled={ipSyncAction !== null}
-                            className="h-8 px-3.5 text-xs font-bold rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white flex items-center gap-1.5 shadow-sm active:scale-98"
-                          >
-                            <ArrowDownLeft className={`w-3.5 h-3.5 ${ipSyncAction === 'pull' ? 'animate-bounce' : ''}`} />
-                            <span>{lang === 'ar' ? 'سحب البيانات الآن' : 'Télécharger'}</span>
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {!isHostingWebSync ? (
+                  <Button
+                    size="sm"
+                    onClick={handleStartWebHosting}
+                    className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
+                  >
+                    <Wifi className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'بدء المشاركة الفورية' : 'Démarrer le partage'}</span>
+                  </Button>
                 ) : (
-                  !isDiscovering && (
-                    <p className="text-[10px] text-[var(--text-muted)] text-center py-1">
-                      {lang === 'ar'
-                        ? 'تأكد من تشغيل المشاركة في الهاتف الأول والاتصال بنفس الشبكة.'
-                        : 'Activez le partage sur le 1er appareil puis lancez la recherche.'}
-                    </p>
-                  )
-                )}
-              </div>
-
-              {/* Status indicator if any sync action is occurring */}
-              {ipSyncStatus && (
-                <div className={`p-2.5 rounded-xl text-xs font-bold text-center animate-in fade-in ${
-                  ipSyncStatus.type === 'success'
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                }`}>
-                  {ipSyncStatus.message}
-                </div>
-              )}
-
-              {/* Subtle Collapsible Manual IP Fallback */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowManualIp(!showManualIp)}
-                  className="w-full text-center text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition py-1"
-                >
-                  {showManualIp ? '▴ ' + tTexts.manualIpToggle : '▾ ' + tTexts.manualIpToggle}
-                </button>
-
-                {showManualIp && (
-                  <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] space-y-2 mt-2 animate-in fade-in">
-                    <div className="flex gap-2">
-                      <Input
-                        value={localIpInput}
-                        onChange={(e) => setLocalIpInput(e.target.value)}
-                        placeholder="192.168.1.50:8080"
-                        className="h-9 text-xs font-mono bg-[var(--card)] border-[var(--border)] text-[var(--text-primary)]"
-                      />
+                  <div className="space-y-2.5 animate-in fade-in">
+                    <div className="p-3 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-[var(--text-muted)] block font-bold">
+                          {lang === 'ar' ? 'رمز الربط المباشر السريع:' : 'Code de connexion directe :'}
+                        </span>
+                        <span className="text-xl font-black text-[var(--success)] tracking-widest font-mono">
+                          {webSyncCode}
+                        </span>
+                      </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={handlePingIp}
-                        disabled={ipSyncAction !== null || !localIpInput.trim()}
-                        className="h-9 px-3 text-xs font-bold border-[var(--border)] text-[var(--text-secondary)]"
+                        onClick={handleStartWebHosting}
+                        className="h-8 text-[11px] font-bold border-[var(--danger-border)] text-[var(--danger)] hover:bg-red-500/10"
                       >
-                        <Activity className={`w-3.5 h-3.5 ${ipSyncAction === 'ping' ? 'animate-spin' : ''}`} />
-                        <span>{lang === 'ar' ? 'فحص' : 'Ping'}</span>
+                        <X className="w-3.5 h-3.5" />
+                        <span>{lang === 'ar' ? 'إيقاف' : 'Arrêter'}</span>
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handlePushToIp}
-                        disabled={ipSyncAction !== null || !localIpInput.trim()}
-                        className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center gap-1"
-                      >
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'إرسال (Push)' : 'Push'}</span>
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        onClick={handlePullFromIp}
-                        disabled={ipSyncAction !== null || !localIpInput.trim()}
-                        className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1"
-                      >
-                        <ArrowDownLeft className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'سحب (Pull)' : 'Pull'}</span>
-                      </Button>
-                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] text-center leading-relaxed">
+                      {lang === 'ar'
+                        ? 'اترك هذه النافذة مفتوحة، واكتب هذا الرمز في الهاتف الثاني للاتصال وسحب البيانات فوراً.'
+                        : 'Laissez cette fenêtre ouverte et saisissez ce code sur le 2ème téléphone.'}
+                    </p>
                   </div>
                 )}
+              </div>
+
+              {/* CARD 2: RECEIVER PHONE (Instant Pull) */}
+              <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] space-y-3 shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--primary)]">
+                    <Radio className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
+                      {lang === 'ar' ? '2. الهاتف الثاني (استلام البيانات)' : '2. Deuxième Téléphone (Réception)'}
+                    </h4>
+                    <p className="text-[10px] text-[var(--text-muted)]">
+                      {lang === 'ar' ? 'الاتصال المباشر بالهاتف الأول وسحب جميع المشتركين' : 'Connexion directe et téléchargement complet'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex gap-2">
+                    <Input
+                      value={partnerSyncCode}
+                      onChange={(e) => setPartnerSyncCode(e.target.value.toUpperCase())}
+                      maxLength={6}
+                      placeholder={lang === 'ar' ? 'أدخل رمز الربط (مثال: A8F2K9)' : 'Code de liaison (ex: A8F2K9)'}
+                      className="h-10 text-sm font-mono font-bold tracking-widest text-center bg-[var(--surface)] border-[var(--border)] text-[var(--text-primary)]"
+                    />
+
+                    <Button
+                      size="sm"
+                      onClick={handleConnectPartner}
+                      disabled={webSyncStatus === 'connecting' || webSyncStatus === 'syncing' || !partnerSyncCode.trim()}
+                      className="h-10 px-4 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center gap-2 shrink-0 active:scale-98"
+                    >
+                      {webSyncStatus === 'connecting' || webSyncStatus === 'syncing' ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      ) : (
+                        <ArrowDownLeft className="w-4 h-4" />
+                      )}
+                      <span>{lang === 'ar' ? 'اتصال وسحب' : 'Connecter'}</span>
+                    </Button>
+                  </div>
+
+                  {/* Real Status Feedback */}
+                  {webSyncMessage && (
+                    <div className={`p-2.5 rounded-xl text-xs font-bold text-center animate-in fade-in ${
+                      webSyncStatus === 'success'
+                        ? 'bg-[var(--success-bg)] text-[var(--success)] border border-[var(--success-border)]'
+                        : webSyncStatus === 'error'
+                        ? 'bg-[var(--danger-bg)] text-[var(--danger)] border border-[var(--danger-border)]'
+                        : 'bg-[var(--primary-bg)] text-[var(--primary)] border border-[var(--primary-border)] animate-pulse'
+                    }`}>
+                      {webSyncMessage}
+                    </div>
+                  )}
+                </div>
               </div>
 
             </div>
