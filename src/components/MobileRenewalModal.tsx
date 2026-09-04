@@ -324,8 +324,8 @@ export function MobileRenewalModal({
             {existingCredit > totalPrice && (
               <div className="text-[10px] text-amber-300/90 font-medium pt-1 border-t border-amber-500/10">
                 {lang === 'ar'
-                  ? `💡 سيتبقى للعميل فائض إضافي قدره +${existingCredit - totalPrice} DH محفوظ في حسابه للتجديد القادم.`
-                  : `💡 Il restera encore un surplus de +${existingCredit - totalPrice} DH conservé pour le prochain renouvellement.`}
+                  ? `سيتبقى للعميل فائض إضافي قدره +${existingCredit - totalPrice} DH محفوظ في حسابه للتجديد القادم.`
+                  : `Il restera encore un surplus de +${existingCredit - totalPrice} DH conservé pour le prochain renouvellement.`}
               </div>
             )}
           </div>

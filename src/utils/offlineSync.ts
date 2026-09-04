@@ -291,6 +291,12 @@ export async function pushToLocalIp(
   if (!url) {
     return { success: false, message: 'يرجى إدخال عنوان IP صالح (مثال: 192.168.1.50:8080)' };
   }
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+    return {
+      success: false,
+      message: 'على موقع الويب (HTTPS)، يمنع المتصفح الاتصال المباشر عبر HTTP العادي. استخدم مزامنة الرمز QR أو مشاركة الملف.'
+    };
+  }
 
   try {
     const { compressed } = await generateOfflineSyncPayload();
@@ -333,6 +339,13 @@ export async function pullFromLocalIp(
   if (!url) {
     return { success: false, message: 'يرجى إدخال عنوان IP صالح (مثال: 192.168.1.50:8080)', count: 0 };
   }
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+    return {
+      success: false,
+      message: 'على موقع الويب (HTTPS)، يمنع المتصفح الاتصال المباشر عبر HTTP العادي. استخدم مسح رمز QR بالكاميرا أو مشاركة الملف.',
+      count: 0
+    };
+  }
 
   try {
     const controller = new AbortController();
@@ -374,6 +387,13 @@ export async function pingLocalIp(
   const url = normalizeLocalIp(targetIp);
   if (!url) {
     return { success: false, message: 'يرجى كتابة عنوان IP صالح', latencyMs: 0 };
+  }
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+    return {
+      success: false,
+      message: 'غير متاح عبر HTTP في بيئة HTTPS',
+      latencyMs: 0
+    };
   }
 
   const start = Date.now();

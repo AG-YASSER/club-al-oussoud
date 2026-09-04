@@ -322,10 +322,10 @@ export function SettingsTab({
       setShowQrSyncModal(false);
       setBackupStatus(
         lang === 'ar'
-          ? `✅ تمت المزامنة بنجاح! تم حفظ وتحديث ${res.count} عضو في قاعدة البيانات.`
+          ? `تمت المزامنة بنجاح! تم حفظ وتحديث ${res.count} عضو في قاعدة البيانات.`
           : lang === 'en'
-          ? `✅ Sync completed! Updated ${res.count} members in database.`
-          : `✅ Synchronisation réussie ! (${res.count} membres enregistrés)`
+          ? `Sync completed! Updated ${res.count} members in database.`
+          : `Synchronisation réussie ! (${res.count} membres enregistrés)`
       );
       setTimeout(() => setBackupStatus(null), 5000);
     } catch (err: any) {
@@ -372,10 +372,10 @@ export function SettingsTab({
         setShowQrSyncModal(false);
         setBackupStatus(
           lang === 'ar'
-            ? `✅ تم استيراد ودمج ${res.count} عضو بنجاح من الملف!`
+            ? `تم استيراد ودمج ${res.count} عضو بنجاح من الملف!`
             : lang === 'en'
-            ? `✅ Imported and merged ${res.count} members from file!`
-            : `✅ Importation réussie (${res.count} membres) !`
+            ? `Imported and merged ${res.count} members from file!`
+            : `Importation réussie (${res.count} membres) !`
         );
         setTimeout(() => setBackupStatus(null), 5000);
       } else {
@@ -422,7 +422,7 @@ export function SettingsTab({
         onPlansUpdated();
         setIpSyncStatus({
           type: 'success',
-          message: `✅ تم سحب وتحديث ${res.count} عضو بنجاح من الخادم!`
+          message: `تم سحب وتحديث ${res.count} عضو بنجاح من الخادم!`
         });
         setTimeout(() => {
           setShowQrSyncModal(false);
@@ -494,11 +494,13 @@ export function SettingsTab({
         try {
           const { compressed } = await generateOfflineSyncPayload();
           await LocalSyncServer.setPayload({ payload: compressed });
-          await fetch(`http://127.0.0.1:${port}/api/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payload: compressed })
-          }).catch(() => {});
+          if (typeof window !== 'undefined' && window.location.protocol !== 'https:') {
+            await fetch(`http://127.0.0.1:${port}/api/sync`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ payload: compressed })
+            }).catch(() => {});
+          }
         } catch (seedErr) {
           console.warn('Failed to seed local server payload:', seedErr);
         }
@@ -530,20 +532,25 @@ export function SettingsTab({
         }
 
         let foundPing = false;
-        for (const h of candidateHosts) {
-          try {
-            const resp = await fetch(`http://${h}:${port}/api/ping`, { signal: AbortSignal.timeout(1500) });
-            if (resp.ok) {
-              const data = await resp.json();
-              if (data?.ips && Array.isArray(data.ips) && data.ips.length > 0) {
-                setServerIps(data.ips);
-              } else {
-                setServerIps([h]);
+        if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+          foundPing = true;
+          setServerIps([window.location.hostname]);
+        } else {
+          for (const h of candidateHosts) {
+            try {
+              const resp = await fetch(`http://${h}:${port}/api/ping`, { signal: AbortSignal.timeout(1500) });
+              if (resp.ok) {
+                const data = await resp.json();
+                if (data?.ips && Array.isArray(data.ips) && data.ips.length > 0) {
+                  setServerIps(data.ips);
+                } else {
+                  setServerIps([h]);
+                }
+                foundPing = true;
+                break;
               }
-              foundPing = true;
-              break;
-            }
-          } catch {}
+            } catch {}
+          }
         }
 
         if (!foundPing && !Capacitor.isNativePlatform()) {
@@ -608,8 +615,8 @@ export function SettingsTab({
           setIpSyncStatus({
             type: 'success',
             message: lang === 'ar'
-              ? `✅ تم سحب وتحديث ${res.count} عضو بنجاح من ${peer.name}!`
-              : `✅ Pulled & updated ${res.count} members from ${peer.name}!`
+              ? `تم سحب وتحديث ${res.count} عضو بنجاح من ${peer.name}!`
+              : `Pulled & updated ${res.count} members from ${peer.name}!`
           });
           setTimeout(() => {
             setShowQrSyncModal(false);
@@ -631,7 +638,7 @@ export function SettingsTab({
         setIpSyncStatus({
           type: res.success ? 'success' : 'error',
           message: res.success
-            ? (lang === 'ar' ? '✅ تم إرسال وتحديث البيانات في الخادم بنجاح!' : '✅ Data pushed and saved to server!')
+            ? (lang === 'ar' ? 'تم إرسال وتحديث البيانات في الخادم بنجاح!' : 'Data pushed and saved to server!')
             : (res.message || (lang === 'ar' ? 'فشل الإرسال' : 'Push failed'))
         });
       } catch (err: any) {
@@ -1535,7 +1542,7 @@ export function SettingsTab({
                   <div className="p-3 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] space-y-1.5 animate-in fade-in">
                     <div className="flex items-center gap-2 text-[var(--success)] font-bold text-xs">
                       <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
-                      <span>{lang === 'ar' ? '✅ هذا الجهاز يشارك البيانات الآن!' : '✅ Cet appareil partage les données !'}</span>
+                      <span>{lang === 'ar' ? 'هذا الجهاز يشارك البيانات الآن!' : 'Cet appareil partage les données !'}</span>
                     </div>
                     <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
                       {lang === 'ar'

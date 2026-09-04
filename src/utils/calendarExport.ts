@@ -21,7 +21,7 @@ export function exportMemberExpiryToCalendar(member: Member, gymName: string = '
     `DTSTAMP:${nowStr}`,
     `DTSTART;VALUE=DATE:${cleanDate}`,
     `DTEND;VALUE=DATE:${cleanDate}`,
-    `SUMMARY:⚠️ Expiration Abonnement: ${member.fullName} (${gymName})`,
+    `SUMMARY:Expiration Abonnement: ${member.fullName} (${gymName})`,
     `DESCRIPTION:Renouvellement pour ${member.fullName}\\nPlan: ${member.planName}\\nTéléphone: ${member.phone}\\nID: ${member.id}`,
     'STATUS:CONFIRMED',
     'BEGIN:VALARM',

@@ -21,9 +21,19 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
   private lastServerTimestamp = 0;
   private currentPayload: string = '';
 
+  private isSecureHttps(): boolean {
+    return typeof window !== 'undefined' && window.location.protocol === 'https:';
+  }
+
   async startServer(): Promise<{ port: number; ips?: string[] }> {
     this.isServerRunning = true;
     const detectedIps: string[] = [];
+
+    // If running on HTTPS (e.g. Vercel), do NOT make insecure HTTP localhost requests to prevent Mixed Content errors
+    if (this.isSecureHttps()) {
+      const currentHost = window.location.hostname || 'club-al-oussoud';
+      return { port: 8080, ips: [currentHost] };
+    }
 
     const hostsToCheck = [
       typeof window !== 'undefined' ? window.location.hostname : '',
@@ -54,6 +64,10 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
 
   async setPayload(options: { payload: string }): Promise<void> {
     this.currentPayload = options.payload;
+
+    // Never fetch insecure HTTP from HTTPS
+    if (this.isSecureHttps()) return;
+
     const hosts = [
       typeof window !== 'undefined' ? window.location.hostname : '',
       '127.0.0.1',
@@ -74,6 +88,8 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
 
   private startServerPolling(host: string, port: number) {
     if (this.serverPollInterval) clearInterval(this.serverPollInterval);
+    if (this.isSecureHttps()) return;
+
     this.serverPollInterval = setInterval(async () => {
       if (!this.isServerRunning) return;
       try {
@@ -130,15 +146,7 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
     // Fast candidate list
     const candidates = new Set<string>();
 
-    // 1. Current origin host and localhost
-    if (typeof window !== 'undefined' && window.location.hostname) {
-      candidates.add(window.location.hostname);
-    }
-    candidates.add('127.0.0.1');
-    candidates.add('localhost');
-    candidates.add('192.168.43.1'); // Android hotspot default
-
-    // 2. Saved IP in localStorage
+    // 1. Saved IP in localStorage
     try {
       const saved = localStorage.getItem('cao_local_ip');
       if (saved) {
@@ -147,33 +155,43 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
       }
     } catch {}
 
-    // Check immediate high-probability hosts
-    await this.testCandidates(Array.from(candidates), 900);
+    // Only test local IP candidates if not on HTTPS or if candidate has explicit protocol
+    if (!this.isSecureHttps()) {
+      if (typeof window !== 'undefined' && window.location.hostname) {
+        candidates.add(window.location.hostname);
+      }
+      candidates.add('127.0.0.1');
+      candidates.add('localhost');
+      candidates.add('192.168.43.1'); // Android hotspot default
 
-    // 3. Smart Subnet Scan
-    if (this.isSearching) {
-      const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-      const ipMatch = currentHost.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
+      await this.testCandidates(Array.from(candidates), 900);
 
-      const subnetHosts: string[] = [];
-      if (ipMatch && ipMatch[1] !== '127.0.0') {
-        const prefix = ipMatch[1];
-        // Scan full subnet 1-254
-        for (let i = 1; i <= 254; i++) {
-          subnetHosts.push(`${prefix}.${i}`);
-        }
-      } else {
-        // Scan standard Wi-Fi ranges
-        const commonPrefixes = ['192.168.11', '192.168.1', '192.168.0', '192.168.43', '10.0.0'];
-        for (const prefix of commonPrefixes) {
-          for (let i = 1; i <= 40; i++) {
+      // Smart Subnet Scan only in local non-https context
+      if (this.isSearching) {
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        const ipMatch = currentHost.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
+
+        const subnetHosts: string[] = [];
+        if (ipMatch && ipMatch[1] !== '127.0.0') {
+          const prefix = ipMatch[1];
+          for (let i = 1; i <= 254; i++) {
             subnetHosts.push(`${prefix}.${i}`);
           }
-          subnetHosts.push(`${prefix}.100`, `${prefix}.101`, `${prefix}.102`, `${prefix}.103`);
+        } else {
+          const commonPrefixes = ['192.168.1', '192.168.0', '192.168.43', '192.168.11', '10.0.0'];
+          for (const prefix of commonPrefixes) {
+            for (let i = 1; i <= 30; i++) {
+              subnetHosts.push(`${prefix}.${i}`);
+            }
+          }
         }
+        await this.testCandidates(subnetHosts, 500);
       }
-
-      await this.testCandidates(subnetHosts, 600);
+    } else {
+      // In HTTPS context (Vercel): Only check saved IP if specified with protocol or directly
+      if (candidates.size > 0) {
+        await this.testCandidates(Array.from(candidates), 1200);
+      }
     }
   }
 
@@ -182,8 +200,17 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
 
     const checkHost = async (host: string) => {
       if (!this.isSearching) return;
+      // In HTTPS, do not attempt plain HTTP fetch to avoid Mixed Content console blocks
+      if (this.isSecureHttps() && !host.startsWith('https://') && !host.startsWith('//')) {
+        return;
+      }
+
       try {
-        const res = await fetch(`http://${host}:8080/api/ping`, {
+        const url = host.startsWith('http://') || host.startsWith('https://')
+          ? `${host}/api/ping`
+          : `http://${host}:8080/api/ping`;
+
+        const res = await fetch(url, {
           method: 'GET',
           signal: AbortSignal.timeout(timeoutMs)
         });
@@ -211,8 +238,7 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
       } catch {}
     };
 
-    // Parallel chunks of 20 for fast responsive discovery
-    const chunkSize = 20;
+    const chunkSize = 15;
     for (let i = 0; i < hosts.length; i += chunkSize) {
       if (!this.isSearching) break;
       const chunk = hosts.slice(i, i + chunkSize);
