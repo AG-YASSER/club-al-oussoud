@@ -241,6 +241,11 @@ export function MobileRenewalModal({
             {lang === 'ar' ? 'اختر باقة الاشتراك' : lang === 'en' ? 'Select Membership Plan' : 'Choisir la formule'}
           </label>
           <div className="grid grid-cols-2 gap-2">
+            {plans.length === 0 && (
+              <div className="col-span-2 py-4 text-center text-xs text-[var(--text-muted)]">
+                {lang === 'ar' ? 'يجب إضافة باقة اشتراك أولاً من الإعدادات.' : 'Veuillez d\'abord ajouter une formule dans les Réglages.'}
+              </div>
+            )}
             {plans.map((p) => {
               const isSelected = p.id === selectedPlanId;
               return (

@@ -1132,6 +1132,11 @@ export function SettingsTab({
 
         {/* Plans List */}
         <div className="divide-y divide-[var(--border-subtle)]">
+          {plans.length === 0 && !showAddPlan && (
+            <div className="py-6 text-center text-xs text-[var(--text-muted)] space-y-2">
+              <p>{lang === 'ar' ? 'لا توجد باقات اشتراك بعد. اضغط على (إضافة) لإنشاء باقات النادي الخاصة بك.' : lang === 'en' ? 'No membership plans yet. Click (Add) to create your gym plans.' : 'Aucune formule pour le moment. Cliquez sur (Ajouter) pour créer vos formules.'}</p>
+            </div>
+          )}
           {plans.map((plan) => {
             const isEditing = editingPlanId === plan.id;
             return (
