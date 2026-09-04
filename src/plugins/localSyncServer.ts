@@ -1,7 +1,7 @@
 import { registerPlugin, WebPlugin, PluginListenerHandle } from '@capacitor/core';
 
 export interface LocalSyncServerPlugin {
-  startServer(): Promise<{ port: number }>;
+  startServer(): Promise<{ port: number; ips?: string[] }>;
   stopServer(): Promise<void>;
   setPayload(options: { payload: string }): Promise<void>;
   printHtml(options: { html: string; title?: string }): Promise<void>;

@@ -486,6 +486,9 @@ export function SettingsTab({
         const port = res?.port || 8080;
         setIsServerRunning(true);
         setServerPort(port);
+        if (res?.ips && Array.isArray(res.ips) && res.ips.length > 0) {
+          setServerIps(res.ips);
+        }
 
         // Seed server payload immediately so connecting devices receive the latest database
         try {
@@ -926,27 +929,27 @@ export function SettingsTab({
     startCameraBtn: lang === 'ar' ? 'تشغيل الكاميرا للمسح' : lang === 'en' ? 'Start Camera' : 'Démarrer la caméra',
     stopCameraBtn: lang === 'ar' ? 'إيقاف الكاميرا' : lang === 'en' ? 'Stop Camera' : 'Arrêter la caméra',
     shareWaBtn: lang === 'ar' ? 'مشاركة ملف المزامنة' : lang === 'en' ? 'Share Sync File' : 'Partager fichier',
-    wifiSyncTitle: lang === 'ar' ? 'المزامنة اللاسلكية المباشرة' : lang === 'en' ? 'Direct Wireless Sync' : 'Synchronisation Sans Fil Directe',
+    wifiSyncTitle: lang === 'ar' ? 'المزامنة اللاسلكية المباشرة' : lang === 'en' ? 'Direct Wireless Transfer' : 'Synchronisation Sans Fil Directe',
     wifiSyncDesc: lang === 'ar'
-      ? 'مزامنة فورية بين جهازين على نفس شبكة Wi-Fi أو نقطة اتصال (Hotspot) بدون إنترنت.'
+      ? 'نقل فوري للبيانات بين الهاتفين على نفس شبكة Wi-Fi أو نقطة اتصال (Partage de connexion) بدون إنترنت وبأعلى سرعة.'
       : lang === 'en'
-      ? 'Instant sync between devices on same Wi-Fi or Hotspot without internet.'
-      : 'Synchronisation instantanée entre appareils sur le même réseau Wi-Fi ou Point d accès.',
-    hostModeTitle: lang === 'ar' ? '1. وضع الاستقبال (خادم)' : lang === 'en' ? '1. Host Server Mode' : '1. Mode Serveur Hôte',
-    hostModeDesc: lang === 'ar' ? 'شغّل هذا الهاتف كخادم لاستقبال البيانات من الهواتف الأخرى' : lang === 'en' ? 'Run this phone as server to receive data from peers' : 'Activer ce téléphone comme serveur pour recevoir les données',
-    discoverModeTitle: lang === 'ar' ? '2. اكتشاف الأجهزة والمزامنة' : lang === 'en' ? '2. Discover & Sync' : '2. Découvrir et Synchroniser',
-    discoverModeDesc: lang === 'ar' ? 'ابحث تلقائياً عن الأجهزة القريبة دون كتابة أي عنوان' : lang === 'en' ? 'Find nearby devices automatically without typing an IP' : 'Rechercher les appareils à proximité sans saisir d adresse',
-    becomeServer: lang === 'ar' ? 'تشغيل كخادم (Host)' : lang === 'en' ? 'Become Server' : 'Mode Serveur',
-    stopServer: lang === 'ar' ? 'إيقاف الخادم' : lang === 'en' ? 'Stop Server' : 'Arrêter le serveur',
-    serverActive: lang === 'ar' ? 'الخادم نشط وجاهز' : lang === 'en' ? 'Server Ready' : 'Serveur Prêt',
-    serverStopped: lang === 'ar' ? 'الخادم متوقف' : lang === 'en' ? 'Server Stopped' : 'Serveur Arrêté',
-    findNearby: lang === 'ar' ? 'البحث عن أجهزة قريبة' : lang === 'en' ? 'Find Nearby Devices' : 'Rechercher appareils',
+      ? 'Instant offline data transfer between phones on the same Wi-Fi or Hotspot.'
+      : 'Transfert instantané entre téléphones sur le même Wi-Fi ou partage de connexion.',
+    hostModeTitle: lang === 'ar' ? '1. مشاركة بيانات هذا الهاتف' : lang === 'en' ? '1. Share Data From This Phone' : '1. Partager les données de ce téléphone',
+    hostModeDesc: lang === 'ar' ? 'شغّل هذا الزر في الهاتف الذي يحتوي على المشتركين لبدء البث' : lang === 'en' ? 'Activate on the source phone to start sharing' : 'Activez ce bouton sur le téléphone contenant les données',
+    discoverModeTitle: lang === 'ar' ? '2. استلام البيانات في الهاتف الثاني' : lang === 'en' ? '2. Receive Data On Second Phone' : '2. Recevoir sur le 2ème téléphone',
+    discoverModeDesc: lang === 'ar' ? 'اضغط للبحث عن الهاتف الأول وسحب كل البيانات فوراً' : lang === 'en' ? 'Search for the other phone to import data' : 'Appuyez pour détecter l autre téléphone et importer les données',
+    becomeServer: lang === 'ar' ? 'بدء المشاركة اللاسلكية' : lang === 'en' ? 'Start Wireless Sharing' : 'Démarrer le partage',
+    stopServer: lang === 'ar' ? 'إيقاف المشاركة' : lang === 'en' ? 'Stop Sharing' : 'Arrêter le partage',
+    serverActive: lang === 'ar' ? 'الهاتف جاهز للمشاركة' : lang === 'en' ? 'Ready to Share' : 'Prêt à partager',
+    serverStopped: lang === 'ar' ? 'المشاركة متوقفة' : lang === 'en' ? 'Sharing stopped' : 'Partage arrêté',
+    findNearby: lang === 'ar' ? 'البحث عن الهاتف الآخر' : lang === 'en' ? 'Search For Phone' : 'Rechercher l appareil',
     stopDiscoveryBtn: lang === 'ar' ? 'إيقاف البحث' : lang === 'en' ? 'Stop Search' : 'Arrêter la recherche',
-    searchingPeers: lang === 'ar' ? 'جارٍ البحث عن أجهزة قريبة...' : lang === 'en' ? 'Searching for nearby devices...' : 'Recherche d appareils en cours...',
-    noPeersFound: lang === 'ar' ? 'لم يتم العثور على أجهزة بعد (تأكد من تشغيل الخادم بالهاتف الآخر)' : lang === 'en' ? 'No devices found (ensure server is running on peer)' : 'Aucun appareil trouvé (vérifiez que le serveur est actif)',
-    syncWithDevice: lang === 'ar' ? 'مزامنة وسحب' : lang === 'en' ? 'Sync / Pull' : 'Synchroniser',
-    pushToDevice: lang === 'ar' ? 'إرسال' : lang === 'en' ? 'Push' : 'Envoyer',
-    manualIpToggle: lang === 'ar' ? 'إدخال عنوان IP يدوياً (خيارات متقدمة)' : lang === 'en' ? 'Manual IP Entry (Advanced)' : 'Saisie IP manuelle (Avancé)',
+    searchingPeers: lang === 'ar' ? 'جارٍ البحث عن الهاتف القريب...' : lang === 'en' ? 'Searching for phone...' : 'Recherche de l appareil en cours...',
+    noPeersFound: lang === 'ar' ? 'لم يتم العثور على الهاتف بعد (تأكد من الضغط على بدء المشاركة في الهاتف الأول)' : lang === 'en' ? 'No phone found (make sure sharing is started on the other phone)' : 'Aucun téléphone détecté (activez le partage sur le 1er téléphone)',
+    syncWithDevice: lang === 'ar' ? 'سحب ودمج جميع البيانات الآن' : lang === 'en' ? 'Download & Merge Database' : 'Télécharger toutes les données',
+    pushToDevice: lang === 'ar' ? 'إرسال إلى هذا الهاتف' : lang === 'en' ? 'Send Data' : 'Envoyer les données',
+    manualIpToggle: lang === 'ar' ? 'ربط يدوي (في حالة تعذر البحث التلقائي)' : lang === 'en' ? 'Manual Connection (if needed)' : 'Connexion manuelle (si besoin)',
     copyCodeBtn: isCopied
       ? (lang === 'ar' ? 'تم النسخ!' : lang === 'en' ? 'Copied!' : 'Copié !')
       : (lang === 'ar' ? 'نسخ كود المزامنة' : lang === 'en' ? 'Copy Code' : 'Copier le code')
@@ -1519,40 +1522,34 @@ export function SettingsTab({
 
                 {/* Live server info when running */}
                 {isServerRunning && (
-                  <div className="p-2.5 rounded-lg bg-[var(--card)] border border-emerald-500/20 space-y-2 animate-in fade-in">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[var(--text-muted)] font-medium">
-                        {lang === 'ar' ? 'المنفذ المفتوح:' : 'Port:'}
-                      </span>
-                      <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                        :{serverPort || 8080}
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>
+                        {lang === 'ar'
+                          ? '✅ هذا الهاتف جاهز الآن لنقل البيانات!'
+                          : lang === 'en'
+                          ? '✅ This phone is ready to transfer data!'
+                          : '✅ Ce téléphone est prêt à transmettre les données !'}
                       </span>
                     </div>
 
+                    <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                      {lang === 'ar'
+                        ? 'اترك هذه الشاشة مفتوحة، وافتح التطبيق في الهاتف الثاني واضغط على (البحث عن الهاتف الآخر) في الخطوة 2 بالأسفل.'
+                        : lang === 'en'
+                        ? 'Keep this screen open. On the other phone, tap "Search For Phone" in step 2 below.'
+                        : 'Laissez cet écran ouvert. Sur le 2ème téléphone, appuyez sur "Rechercher l appareil" ci-dessous.'}
+                    </p>
+
                     {serverIps.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-[var(--text-muted)] block">
-                          {lang === 'ar' ? 'عنوان IP الخاص بهذا الهاتف (انقر للنسخ):' : 'Phone Local IP (tap to copy):'}
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
+                      <div className="pt-1.5 border-t border-emerald-500/20 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                        <span>{lang === 'ar' ? 'عنوان الهاتف في الشبكة:' : 'Adresse locale:'}</span>
+                        <div className="flex gap-1">
                           {serverIps.map((ip) => (
-                            <button
-                              key={ip}
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(`${ip}:${serverPort || 8080}`);
-                                  showAlert(
-                                    lang === 'ar' ? 'تم النسخ' : 'Copied',
-                                    `${ip}:${serverPort || 8080}`,
-                                    'success'
-                                  );
-                                } catch {}
-                              }}
-                              className="font-mono text-[10px] font-bold px-2.5 py-1 rounded bg-[var(--surface)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--primary)] flex items-center gap-1.5 transition"
-                            >
-                              <span>{ip}:{serverPort || 8080}</span>
-                              <Copy className="w-3 h-3 opacity-70" />
-                            </button>
+                            <span key={ip} className="font-mono px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text-primary)] border border-[var(--border)] font-bold">
+                              {ip}
+                            </span>
                           ))}
                         </div>
                       </div>
