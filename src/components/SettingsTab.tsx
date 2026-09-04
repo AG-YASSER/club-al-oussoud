@@ -199,12 +199,12 @@ export function SettingsTab({
 
   const handleToggleNetServer = async () => {
     if (isNetServerActive) {
-      await sameNetworkSync.stopServer();
+      await sameNetworkSync.stopServer(lang);
       if (onShowToast) {
         onShowToast(lang === 'ar' ? 'تم إيقاف الخادم' : 'Serveur arrêté', 'warning');
       }
     } else {
-      await sameNetworkSync.startServer();
+      await sameNetworkSync.startServer(lang);
       if (onShowToast) {
         onShowToast(
           lang === 'ar'
@@ -217,7 +217,7 @@ export function SettingsTab({
   };
 
   const handlePullFromNetwork = async () => {
-    const res = await sameNetworkSync.pullDataFromSameNetwork();
+    const res = await sameNetworkSync.pullDataFromSameNetwork(lang);
     if (res.success) {
       onPlansUpdated();
       const msg = lang === 'ar'
