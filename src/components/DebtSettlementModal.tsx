@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Member, db } from '../db/db';
 import { syncEngine } from '../db/syncEngine';
 import { Button, Sheet, Input } from './ui/shadcn';
-import { Banknote, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
+import { Banknote, ShieldCheck, AlertCircle, Clock, Coins } from 'lucide-react';
 import { format } from 'date-fns';
 import { SupportedLanguage } from '../utils/i18n';
 import confetti from 'canvas-confetti';
@@ -38,9 +38,11 @@ export function DebtSettlementModal({
 
   if (!member) return null;
 
-  const payAmountNum = Number(payAmount) || 0;
+  const payAmountNum = Math.max(0, Number(payAmount) || 0);
   const diff = currentDebt - payAmountNum;
   const newDebt = diff > 0 ? diff : 0;
+  const excessPaid = payAmountNum > currentDebt ? payAmountNum - currentDebt : 0;
+  const newCreditBalance = (member.creditBalance || 0) + excessPaid;
   const isFullSettlement = payAmountNum >= currentDebt;
 
   const handleSettle = async () => {
@@ -66,7 +68,9 @@ export function DebtSettlementModal({
         amountPaid: payAmountNum,
         paymentDate: todayStr,
         paymentMethod: 'CASH' as const,
-        note: isFullSettlement
+        note: excessPaid > 0
+          ? (lang === 'ar' ? `استخلاص دين مع حفظ فائض: +${excessPaid} DH` : `Règlement dette avec surplus conservé: +${excessPaid} DH`)
+          : isFullSettlement
           ? (lang === 'ar' ? 'استخلاص دين سابق بالكامل' : 'Règlement total de la dette')
           : (lang === 'ar' ? `استخلاص جزئي للدين (باقي: ${newDebt} DH)` : lang === 'en' ? `Partial debt payment (remaining: ${newDebt} DH)` : `Règlement partiel (reste: ${newDebt} DH)`),
         timestamp: now
@@ -75,11 +79,12 @@ export function DebtSettlementModal({
       await db.payments.add(paymentRecord);
       await syncEngine.enqueue('PAYMENT', paymentRecord);
 
-      // 2. Update Member Record with new exact debt
+      // 2. Update Member Record with new exact debt & updated creditBalance
       const updatedMember: Member = {
         ...member,
         isPaid: isFullSettlement,
         amountDue: newDebt,
+        creditBalance: newCreditBalance,
         updatedAt: now
       };
 
@@ -150,7 +155,15 @@ export function DebtSettlementModal({
           </div>
 
           {/* Dynamic Feedback */}
-          {isFullSettlement ? (
+          {excessPaid > 0 ? (
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-amber-300">
+              <span className="flex items-center gap-1.5 font-bold text-[11px]">
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                {lang === 'ar' ? 'فائض زائد سيتم حفظه لحساب العميل:' : lang === 'en' ? 'Surplus credit saved to account:' : 'Surplus conservé en compte :'}
+              </span>
+              <span className="font-mono font-black text-xs">+{excessPaid} DH</span>
+            </div>
+          ) : isFullSettlement ? (
             <div className="p-2.5 rounded-lg bg-[var(--success-bg)] border border-[var(--success-border)] flex items-center justify-between text-[var(--success)]">
               <span className="flex items-center gap-1.5 font-bold text-[11px]">
                 <ShieldCheck className="w-3.5 h-3.5" />

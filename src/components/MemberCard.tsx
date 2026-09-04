@@ -12,7 +12,8 @@ import {
   Edit3,
   Banknote,
   CheckCircle,
-  Lock
+  Lock,
+  Coins
 } from 'lucide-react';
 import { SupportedLanguage, translations, getWhatsAppReminder } from '../utils/i18n';
 
@@ -68,7 +69,7 @@ export function MemberCard({
       );
     }
 
-    switch (status) {
+        switch (status) {
       case 'active':
         return (
           <Badge variant="outline" className="bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)] text-[10px] px-1.5 py-0 font-medium">
@@ -144,6 +145,11 @@ export function MemberCard({
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-xs text-[var(--text-secondary)] truncate">{member.planName}</span>
               {getStatusBadge()}
+              {Number(member.creditBalance) > 0 && !hasDebt && (
+                <Badge variant="outline" className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px] px-1.5 py-0 font-bold">
+                  +{member.creditBalance} DH {lang === 'ar' ? 'فائض' : 'Crédit'}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -160,6 +166,15 @@ export function MemberCard({
       {expanded && (
         <div className="px-3 pb-3 pt-2 border-t border-[var(--border)] bg-[var(--card-subtle)] space-y-2.5">
           {/* Member Meta */}
+          {Number(member.creditBalance) > 0 && (
+            <div className="flex items-center justify-between p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+              <span className="text-amber-400 font-bold flex items-center gap-1.5 text-[11px]">
+                <Coins className="w-3.5 h-3.5" />
+                {lang === 'ar' ? 'رصيد فائض محفوظ في النظام:' : lang === 'en' ? 'Saved Surplus Credit:' : 'Surplus disponible en compte :'}
+              </span>
+              <span className="font-mono font-black text-amber-300 text-xs">+{member.creditBalance} DH</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2 text-xs bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--border)]">
             <div>
               <span className="text-[var(--text-muted)] block text-[10px] uppercase font-bold">{t.phone}</span>

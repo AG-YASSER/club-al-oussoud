@@ -26,6 +26,7 @@ export interface Member {
   expiryDate: string; // YYYY-MM-DD
   isPaid: boolean; // Tracking paid vs unpaid cash debt
   amountDue?: number;
+  creditBalance?: number; // Surplus amount from overpayments
   notes?: string;
   isDeleted: boolean; // Soft delete flag
   deletedAt?: string; // ISO or YYYY-MM-DD timestamp

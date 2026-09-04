@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Member, MembershipPlan, db } from '../db/db';
 import { syncEngine } from '../db/syncEngine';
 import { Button, Sheet, Input } from './ui/shadcn';
-import { Calendar, Banknote, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Calendar, Banknote, Clock, ShieldCheck, AlertCircle, Coins } from 'lucide-react';
 import { addMonths, format, parseISO, isAfter, startOfDay } from 'date-fns';
 import { SupportedLanguage, translations } from '../utils/i18n';
 import confetti from 'canvas-confetti';
@@ -28,7 +28,6 @@ export function MobileRenewalModal({
 }: MobileRenewalModalProps) {
   const defaultPlan = plans.find((p) => p.id === member.planId) || plans[0];
   const [selectedPlanId, setSelectedPlanId] = useState<string>(defaultPlan?.id || plans[0]?.id || '');
-  const [customPaidAmount, setCustomPaidAmount] = useState<number>(defaultPlan?.price || 0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,12 +36,23 @@ export function MobileRenewalModal({
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
 
+  // Existing surplus balance from previous overpayment
+  const existingCredit = Math.max(0, Number(member.creditBalance) || 0);
+
+  // Dynamic calculations
+  const totalPrice = Number(selectedPlan ? selectedPlan.price : 0);
+  const appliedCredit = Math.min(existingCredit, totalPrice);
+  const netDueAfterCredit = Math.max(0, totalPrice - appliedCredit);
+
+  const [customPaidAmount, setCustomPaidAmount] = useState<number>(netDueAfterCredit);
+
   useEffect(() => {
     if (selectedPlan) {
-      setCustomPaidAmount(selectedPlan.price);
+      // By default, suggest net cash due after deducting existing surplus credit!
+      setCustomPaidAmount(netDueAfterCredit);
       setError(null);
     }
-  }, [selectedPlanId, isOpen]);
+  }, [selectedPlan, isOpen, netDueAfterCredit]);
 
   // Check if member already has active debt
   const existingDebt = member.amountDue || 0;
@@ -76,12 +86,14 @@ export function MobileRenewalModal({
 
   const { startDate: newStartDate, expiryDate: newExpiryDate } = calculateDates();
 
-  // Dynamic Debt Calculation: Remaining Debt = (Plan Price - Entered Cash Amount)
-  const totalPrice = Number(selectedPlan ? selectedPlan.price : 0);
-  const amountPaidNum = Number(customPaidAmount) || 0;
-  const remainingDebt = totalPrice > amountPaidNum ? totalPrice - amountPaidNum : 0;
-  const excessCredit = amountPaidNum > totalPrice ? amountPaidNum - totalPrice : 0;
-  const isFullyPaid = amountPaidNum >= totalPrice;
+  // Dynamic Debt / Surplus Calculation:
+  // Total funds available = previous surplus credit + cash received today
+  const amountPaidNum = Math.max(0, Number(customPaidAmount) || 0);
+  const totalFunds = existingCredit + amountPaidNum;
+  const isFullyCovered = totalFunds >= totalPrice;
+  const remainingDebt = isFullyCovered ? 0 : totalPrice - totalFunds;
+  const newCreditBalance = isFullyCovered ? totalFunds - totalPrice : 0;
+  const isFullyPaid = isFullyCovered;
 
   const handleRenew = async () => {
     // Hard check: Restrict renewal if member has unpaid prior debt
@@ -108,7 +120,7 @@ export function MobileRenewalModal({
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const subId = `SUB-${now}-${member.id}`;
 
-      // Update Member state with exact calculated debt
+      // Update Member state with exact calculated debt and updated creditBalance (surplus becomes 0 if fully used)
       const updatedMember: Member = {
         ...member,
         planId: selectedPlan.id,
@@ -116,7 +128,8 @@ export function MobileRenewalModal({
         startDate: newStartDate,
         expiryDate: newExpiryDate,
         isPaid: isFullyPaid,
-        amountDue: remainingDebt, // Exactly (totalPrice - amountPaidNum)
+        amountDue: remainingDebt,
+        creditBalance: newCreditBalance, // Surplus stored in system until 0 or updated
         updatedAt: now
       };
 
@@ -136,32 +149,39 @@ export function MobileRenewalModal({
       };
       await db.subscriptions.add(subscriptionRecord);
 
-      // Create immutable Cash payment record for amount actually paid
-      if (amountPaidNum > 0) {
-        const paymentRecord = {
-          id: `PAY-${now}`,
-          subscriptionId: subId,
-          memberId: member.id,
-          memberName: member.fullName,
-          amountPaid: amountPaidNum,
-          paymentDate: todayStr,
-          paymentMethod: 'CASH' as const,
-          note: remainingDebt > 0
-            ? `Paiement partiel. Reste dû: ${remainingDebt} DH`
-            : excessCredit > 0
-            ? `Paiement avec surplus: +${excessCredit} DH`
-            : 'Paiement comptant',
-          timestamp: now
-        };
-
-        await db.payments.add(paymentRecord);
-        await syncEngine.enqueue('PAYMENT', paymentRecord);
+      // Record Cash payment record
+      let note = 'Paiement comptant';
+      if (existingCredit > 0 && amountPaidNum > 0) {
+        note = `Paiement avec déduction de surplus antérieur (${appliedCredit} DH déduits). Encaissé: ${amountPaidNum} DH${newCreditBalance > 0 ? ` (Nouveau surplus: +${newCreditBalance} DH)` : ''}`;
+      } else if (existingCredit > 0 && amountPaidNum === 0) {
+        note = `Renouvellement couvert par surplus antérieur (${appliedCredit} DH déduits)${newCreditBalance > 0 ? ` (Nouveau surplus: +${newCreditBalance} DH)` : ''}`;
+      } else if (remainingDebt > 0) {
+        note = `Paiement partiel. Reste dû: ${remainingDebt} DH`;
+      } else if (newCreditBalance > 0) {
+        note = `Paiement avec surplus conservé: +${newCreditBalance} DH`;
       }
+
+      const paymentRecord = {
+        id: `PAY-${now}`,
+        subscriptionId: subId,
+        memberId: member.id,
+        memberName: member.fullName,
+        amountPaid: amountPaidNum,
+        paymentDate: todayStr,
+        paymentMethod: 'CASH' as const,
+        note: note,
+        timestamp: now
+      };
+
+      await db.payments.add(paymentRecord);
+      await syncEngine.enqueue('PAYMENT', paymentRecord);
 
       await syncEngine.enqueue('SUBSCRIPTION', subscriptionRecord);
       await syncEngine.enqueue('UPDATE_MEMBER', updatedMember);
 
-      confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
+      if (isFullyPaid) {
+        confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
+      }
       onRenewSuccess(updatedMember);
       onClose();
     } catch (err) {
@@ -176,7 +196,7 @@ export function MobileRenewalModal({
     <Sheet
       isOpen={isOpen}
       onClose={onClose}
-      title={lang === 'ar' ? 'تجديد الاشتراك / استخلاص' : lang === 'en' ? 'Renew Membership / Settle' : 'Renouvellement d\'Abonnement'}
+      title={lang === 'ar' ? 'تجديد الاشتراك / الأداء' : lang === 'en' ? 'Renew Membership / Settle' : 'Renouvellement d\'Abonnement'}
       description={`${member.fullName} (#${member.id})`}
     >
       <div className={`space-y-4 py-2 text-xs ${isRTL ? 'rtl' : 'ltr'}`}>
@@ -185,14 +205,12 @@ export function MobileRenewalModal({
           <div className="p-3.5 rounded-xl bg-[var(--danger-bg)] border border-[var(--danger-border)] space-y-2 text-[var(--danger)]">
             <div className="flex items-center gap-2 font-bold text-xs">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{lang === 'ar' ? 'تنبيه: دين سابق معلق على المشترك' : lang === 'en' ? 'Warning: Member has pending debt' : 'Attention: Dette antérieure impayée'}</span>
+              <span>{lang === 'ar' ? 'تنبيه: يوجد على المشترك دين غير مدفوع' : lang === 'en' ? 'Warning: Member has pending debt' : 'Attention: Dette antérieure impayée'}</span>
             </div>
             <p className="text-[11px] leading-relaxed">
               {lang === 'ar'
-                ? `يجب استخلاص الدين السابق أولاً (${existingDebt} DH) قبل تجديد الاشتراك.`
-                : lang === 'en'
-                ? `Previous debt of ${existingDebt} DH must be settled first before renewing.`
-                : `Veuillez d'abord encaisser la dette précédente de ${existingDebt} DH avant de renouveler.`}
+                ? `هذا المشترك مدين بمبلغ ${existingDebt} DH. النظام يمنع التجديد حتى يتم استخلاص الدين السابق كاملاً.`
+                : `Ce membre doit encore ${existingDebt} DH. Le renouvellement est bloqué jusqu'à régularisation totale de la dette.`}
             </p>
             {onOpenDebtSettlement && (
               <Button
@@ -266,6 +284,53 @@ export function MobileRenewalModal({
           </div>
         </div>
 
+        {/* SPECIAL SURPLUS NOTIFICATION BOX: Appears ONLY when existingCredit > 0 UNDER THE DATES */}
+        {existingCredit > 0 && (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2.5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-bold text-xs text-amber-400">
+                <Coins className="w-4 h-4 text-amber-400 shrink-0" />
+                {lang === 'ar'
+                  ? 'رصيد فائض سابق متوفر للعميل'
+                  : lang === 'en'
+                  ? 'Previous Surplus Credit Available'
+                  : 'Surplus antérieur disponible'}
+              </span>
+              <span className="font-mono font-black text-xs px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                +{existingCredit} DH
+              </span>
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-amber-200/90 font-medium">
+              {lang === 'ar'
+                ? `تنبيه لصاحب المحل: هذا العميل قد أعطى في السابق مبلغاً أكبر من الاشتراك (بقي له +${existingCredit} DH)، وتم تلقائياً احتساب وخصم الفائض (${appliedCredit} DH) من هذا التجديد حتى يصبح الفائض 0.`
+                : lang === 'en'
+                ? `Notice: This customer previously overpaid (remaining credit: +${existingCredit} DH). The surplus of ${appliedCredit} DH has been automatically deducted from this renewal.`
+                : `Note réception : Ce client a versé précédemment un montant supérieur à l'abonnement (surplus de +${existingCredit} DH). Ce montant (${appliedCredit} DH) a été automatiquement déduit de ce renouvellement.`}
+            </p>
+
+            <div className="flex items-center justify-between text-[11px] pt-2 border-t border-amber-500/20 font-mono">
+              <span className="text-amber-200/70">
+                {lang === 'ar' ? 'سعر الباقة:' : 'Tarif :'} <strong className="text-amber-200">{totalPrice} DH</strong>
+              </span>
+              <span className="text-emerald-400 font-bold">
+                -{appliedCredit} DH {lang === 'ar' ? '(خصم الفائض)' : '(déduit)'}
+              </span>
+              <span className="font-bold text-amber-300">
+                = {netDueAfterCredit} DH {lang === 'ar' ? '(المطلوب)' : '(net à payer)'}
+              </span>
+            </div>
+
+            {existingCredit > totalPrice && (
+              <div className="text-[10px] text-amber-300/90 font-medium pt-1 border-t border-amber-500/10">
+                {lang === 'ar'
+                  ? `💡 سيتبقى للعميل فائض إضافي قدره +${existingCredit - totalPrice} DH محفوظ في حسابه للتجديد القادم.`
+                  : `💡 Il restera encore un surplus de +${existingCredit - totalPrice} DH conservé pour le prochain renouvellement.`}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 3. Single Clean Cash Input Box & Live Dynamic Calculation */}
         <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--card)] space-y-3">
           <div className="flex items-center justify-between">
@@ -274,7 +339,14 @@ export function MobileRenewalModal({
               {lang === 'ar' ? 'المبلغ المستلم نقداً (كاش)' : lang === 'en' ? 'Cash Received Today' : 'Montant Encaissé (Espèces)'}
             </span>
             <span className="text-[11px] font-mono font-bold text-[var(--text-secondary)]">
-              {lang === 'ar' ? 'سعر الباقة:' : lang === 'en' ? 'Plan Price:' : 'Tarif :'} {totalPrice} DH
+              {existingCredit > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="line-through text-zinc-500 text-[10px]">{totalPrice} DH</span>
+                  <span className="text-amber-400 font-black">{netDueAfterCredit} DH</span>
+                </span>
+              ) : (
+                <span>{lang === 'ar' ? 'سعر الباقة:' : lang === 'en' ? 'Plan Price:' : 'Tarif :'} {totalPrice} DH</span>
+              )}
             </span>
           </div>
 
@@ -300,19 +372,21 @@ export function MobileRenewalModal({
               </span>
               <span className="font-mono font-black text-xs">-{remainingDebt} DH</span>
             </div>
-          ) : excessCredit > 0 ? (
-            <div className="p-2.5 rounded-lg bg-[var(--info-bg)] border border-[var(--info-border)] flex items-center justify-between text-[var(--info)]">
+          ) : newCreditBalance > 0 ? (
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-amber-300">
               <span className="flex items-center gap-1.5 font-bold text-[11px]">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                {lang === 'ar' ? 'فائض / رصيد إضافي:' : lang === 'en' ? 'Excess Credit:' : 'Surplus en plus :'}
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                {lang === 'ar' ? 'فائض جديد سيتم حفظه للنظام:' : lang === 'en' ? 'New Excess Credit to be Saved:' : 'Nouveau surplus conservé :'}
               </span>
-              <span className="font-mono font-black text-xs">+{excessCredit} DH</span>
+              <span className="font-mono font-black text-xs">+{newCreditBalance} DH</span>
             </div>
           ) : (
             <div className="p-2.5 rounded-lg bg-[var(--success-bg)] border border-[var(--success-border)] flex items-center justify-between text-[var(--success)]">
               <span className="flex items-center gap-1.5 font-bold text-[11px]">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                {lang === 'ar' ? 'الحساب خالص بالكامل' : lang === 'en' ? 'Paid in Full (Zero Debt)' : 'Compte soldé (Payé)'}
+                {existingCredit > 0
+                  ? (lang === 'ar' ? 'تم استهلاك الفائض بالكامل (الحساب خالص)' : lang === 'en' ? 'Surplus fully applied (Account Settled)' : 'Surplus soldé (Compte réglé)')
+                  : (lang === 'ar' ? 'الحساب خالص بالكامل' : lang === 'en' ? 'Paid in Full (Zero Debt)' : 'Compte soldé (Payé)')}
               </span>
               <span className="font-mono font-black text-xs">0 DH</span>
             </div>
@@ -333,6 +407,8 @@ export function MobileRenewalModal({
             ? (lang === 'ar' ? 'جارٍ تسجيل العملية...' : 'Traitement...')
             : hasExistingDebt
             ? (lang === 'ar' ? 'التجديد معطل (يوجد دين سابق)' : 'Renouvellement bloqué (Dette en cours)')
+            : amountPaidNum === 0 && isFullyCovered
+            ? (lang === 'ar' ? 'تأكيد التجديد (0 DH كاش - مخصوم من الفائض)' : lang === 'en' ? 'Confirm Renewal (0 DH Cash - Covered by Surplus)' : 'Valider (0 DH - Déduit du surplus)')
             : lang === 'ar'
             ? `تأكيد واستلام ${amountPaidNum} DH كاش`
             : lang === 'en'
