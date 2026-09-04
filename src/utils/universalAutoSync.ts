@@ -85,24 +85,27 @@ class UniversalAutoSyncManager {
   public async discoverAndPull(): Promise<SyncResult> {
     this.setStatus('receiving', 'جارٍ الاتصال بالهاتف وسحب البيانات...');
 
-    // Strategy 1: Pull from Web / Serverless endpoint
-    try {
-      const res = await fetch('/api/sync', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.success && data.payload) {
-          const applyRes = await applyOfflineSyncPayload(data.payload);
-          if (applyRes.success) {
-            this.setStatus('success', `تم الاتصال وسحب ${applyRes.count} عضو بنجاح!`);
-            return applyRes;
+    // Strategy 1: Pull from Web Relay endpoint (retry up to 4 times)
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const res = await fetch(`/api/sync?t=${Date.now()}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+          signal: AbortSignal.timeout(4500)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && data.payload) {
+            const applyRes = await applyOfflineSyncPayload(data.payload);
+            if (applyRes.success) {
+              this.setStatus('success', `تم الاتصال وسحب ${applyRes.count} عضو بنجاح!`);
+              return applyRes;
+            }
           }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 600));
+    }
 
     // Strategy 2: If in native app or local network, query default port 8080 on standard local hostnames
     if (typeof window !== 'undefined' && window.location.protocol !== 'https:') {
