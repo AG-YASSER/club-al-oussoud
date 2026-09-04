@@ -135,38 +135,22 @@ export function InteractiveCalendar({
     activeMembers.forEach((member) => {
       const hasDebt = (member.amountDue || 0) > 0 || !member.isPaid;
       const expiryKey = normalizeDateKey(member.expiryDate);
-      const startKey = normalizeDateKey(member.startDate);
 
-      // 1. Subscription Expiration: Map to expiryDate
+      // Debts & Expirations: Strictly map to expiryDate (due/collection date next month)
+      // Never map debts to startDate (registration date)
       if (expiryKey) {
         const entry = getEntry(expiryKey);
-        if (!hasDebt) {
-          entry.expiring.push(member);
+        if (hasDebt) {
+          if (!entry.debts.some((m) => m.id === member.id)) {
+            entry.debts.push(member);
+          }
+        } else {
+          if (!entry.expiring.some((m) => m.id === member.id)) {
+            entry.expiring.push(member);
+          }
         }
         if (!entry.all.some((m) => m.id === member.id)) {
           entry.all.push(member);
-        }
-      }
-
-      // 2. Unpaid Debt: Map to startDate (date debt was recorded) and expiryDate
-      if (hasDebt) {
-        if (startKey) {
-          const startEntry = getEntry(startKey);
-          if (!startEntry.debts.some((m) => m.id === member.id)) {
-            startEntry.debts.push(member);
-          }
-          if (!startEntry.all.some((m) => m.id === member.id)) {
-            startEntry.all.push(member);
-          }
-        }
-        if (expiryKey && expiryKey !== startKey) {
-          const expiryEntry = getEntry(expiryKey);
-          if (!expiryEntry.debts.some((m) => m.id === member.id)) {
-            expiryEntry.debts.push(member);
-          }
-          if (!expiryEntry.all.some((m) => m.id === member.id)) {
-            expiryEntry.all.push(member);
-          }
         }
       }
     });
@@ -210,8 +194,14 @@ export function InteractiveCalendar({
   }, [activeMembers, currentMonth]);
 
   const monthlyDebtsCount = useMemo(() => {
-    return activeMembers.filter((m) => (m.amountDue || 0) > 0 || !m.isPaid).length;
-  }, [activeMembers]);
+    const currentMonthPrefix = format(currentMonth, 'yyyy-MM');
+    return activeMembers.filter((m) => {
+      const hasDebt = (m.amountDue || 0) > 0 || !m.isPaid;
+      if (!hasDebt) return false;
+      const expKey = normalizeDateKey(m.expiryDate);
+      return expKey && expKey.startsWith(currentMonthPrefix);
+    }).length;
+  }, [activeMembers, currentMonth]);
 
   const todayEventsCount = useMemo(() => {
     return agendaByDate[todayStr]?.all.length || 0;

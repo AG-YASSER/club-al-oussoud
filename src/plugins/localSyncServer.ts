@@ -3,6 +3,8 @@ import { registerPlugin, WebPlugin, PluginListenerHandle } from '@capacitor/core
 export interface LocalSyncServerPlugin {
   startServer(): Promise<{ port: number }>;
   stopServer(): Promise<void>;
+  setPayload(options: { payload: string }): Promise<void>;
+  printHtml(options: { html: string; title?: string }): Promise<void>;
   startDiscovery(): Promise<void>;
   stopDiscovery(): Promise<void>;
   addListener(
@@ -59,6 +61,41 @@ export class LocalSyncServerWeb extends WebPlugin implements LocalSyncServerPlug
         }
       } catch {}
     }, 2500);
+  }
+
+  async setPayload(options: { payload: string }): Promise<void> {
+    try {
+      await fetch('http://127.0.0.1:8080/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: options.payload })
+      });
+    } catch {}
+  }
+
+  async printHtml(options: { html: string; title?: string }): Promise<void> {
+    if (typeof window === 'undefined') return;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(options.html);
+      doc.close();
+      iframe.contentWindow?.focus();
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        }, 2000);
+      }, 300);
+    }
   }
 
   async stopServer(): Promise<void> {

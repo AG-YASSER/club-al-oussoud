@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { SupportedLanguage, translations, getWhatsAppReminder } from '../utils/i18n';
+import { exportHtmlToPrintAndPdf } from '../utils/printAndPdf';
 
 interface FinanceScreenProps {
   payments: Payment[];
@@ -162,19 +163,9 @@ export function FinanceScreen({
     }
   };
 
-  // EXPORT 2: Printable High-End Clean PDF Document
-  const exportToCleanPDF = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      setAlertModal({
-        isOpen: true,
-        title: lang === 'ar' ? 'تنبيه النوافذ المنبثقة' : 'Fenêtres Pop-up',
-        description: lang === 'ar' ? 'يرجى السماح بالنوافذ المنبثقة في المتصفح لطباعة التقرير المالي.' : 'Veuillez autoriser les fenêtres pop-up pour imprimer le rapport.',
-        variant: 'warning'
-      });
-      return;
-    }
-
+  // EXPORT 2: Printable High-End Clean PDF Document (Native Android & Web)
+  const exportToCleanPDF = async () => {
+    setIsExportOpen(false);
     const printHtml = `
       <!DOCTYPE html>
       <html lang="${lang}" dir="${isRTL ? 'rtl' : 'ltr'}">
@@ -332,11 +323,11 @@ export function FinanceScreen({
       </body>
       </html>
     `;
-
-    printWindow.document.open();
-    printWindow.document.write(printHtml);
-    printWindow.document.close();
-    setIsExportOpen(false);
+    await exportHtmlToPrintAndPdf({
+      html: printHtml,
+      title: `Rapport_Financier_${new Date().toISOString().split('T')[0]}`,
+      lang
+    });
   };
 
   const handleSettleDebtClick = (member: Member) => {

@@ -487,6 +487,19 @@ export function SettingsTab({
         setIsServerRunning(true);
         setServerPort(port);
 
+        // Seed server payload immediately so connecting devices receive the latest database
+        try {
+          const { compressed } = await generateOfflineSyncPayload();
+          await LocalSyncServer.setPayload({ payload: compressed });
+          await fetch(`http://127.0.0.1:${port}/api/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: compressed })
+          }).catch(() => {});
+        } catch (seedErr) {
+          console.warn('Failed to seed local server payload:', seedErr);
+        }
+
         // Listen for incoming sync payloads pushed to this server
         try {
           serverPayloadListenerRef.current = await (LocalSyncServer as any).addListener('dataReceived', async (data: any) => {
@@ -728,7 +741,7 @@ export function SettingsTab({
         const fileResult = await Filesystem.writeFile({
           path: fileName,
           data: jsonStr,
-          directory: Directory.Documents,
+          directory: Directory.Cache,
           encoding: Encoding.UTF8
         });
 
@@ -781,6 +794,22 @@ export function SettingsTab({
     reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
+
+        // 1. First try applyOfflineSyncPayload which supports BOTH CAO_SYNC and full JSON backup formats
+        const syncRes = await applyOfflineSyncPayload(content);
+        if (syncRes.success) {
+          onPlansUpdated();
+          setBackupStatus(
+            lang === 'ar'
+              ? `تم استرجاع وتحديث ${syncRes.count} عضو بنجاح!`
+              : lang === 'en'
+              ? `Restored ${syncRes.count} members successfully!`
+              : `Restauration réussie (${syncRes.count} membres) !`
+          );
+          setTimeout(() => setBackupStatus(null), 4000);
+          return;
+        }
+
         const parsed = JSON.parse(content);
 
         if (!parsed.data || !Array.isArray(parsed.data.members)) {

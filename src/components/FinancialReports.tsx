@@ -10,6 +10,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { exportHtmlToPrintAndPdf } from '../utils/printAndPdf';
 
 interface FinancialReportsProps {
   payments: PaymentRecord[];
@@ -98,11 +99,8 @@ export function FinancialReports({ payments, members }: FinancialReportsProps) {
     document.body.removeChild(link);
   };
 
-  // Download high-end printable PDF Report
-  const downloadPDFReport = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
+  // Download high-end printable PDF Report (Native Android & Web)
+  const downloadPDFReport = async () => {
     const html = `
       <!DOCTYPE html>
       <html lang="fr">
@@ -234,14 +232,11 @@ export function FinancialReports({ payments, members }: FinancialReportsProps) {
       </body>
       </html>
     `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    await exportHtmlToPrintAndPdf({
+      html,
+      title: `Rapport_Financier_${format(now, 'yyyy-MM')}`,
+      lang: 'fr'
+    });
   };
 
   return (
