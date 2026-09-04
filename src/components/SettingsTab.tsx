@@ -490,11 +490,13 @@ export function SettingsTab({
         } catch {}
 
         // Enumerate local IP address
-        let detectedHost = '127.0.0.1';
+        let detectedHost = '0.0.0.0';
         if (res?.ips && Array.isArray(res.ips) && res.ips.length > 0) {
-          setServerIps(res.ips);
-          detectedHost = res.ips[0];
-        } else if (typeof window !== 'undefined' && window.location.hostname) {
+          // Filter out loopbacks and pick real Wi-Fi IP
+          const nonLoopbacks = res.ips.filter((ip) => ip !== '127.0.0.1' && ip !== 'localhost' && ip !== '0.0.0.0');
+          setServerIps(nonLoopbacks.length > 0 ? nonLoopbacks : res.ips);
+          detectedHost = nonLoopbacks.length > 0 ? nonLoopbacks[0] : res.ips[0];
+        } else if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost') {
           detectedHost = window.location.hostname;
           setServerIps([detectedHost]);
         }
@@ -520,14 +522,64 @@ export function SettingsTab({
     }
   };
 
-  const handleCopySyncText = async () => {
-    if (!compressedPayload) return;
+  // Client Auto-Discovery Listener: Listens for UDP multicast & fast subnet sweep
+  const startBackgroundAutoDiscovery = async () => {
     try {
-      await navigator.clipboard.writeText(compressedPayload);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500);
-    } catch (err) {
-      console.error(err);
+      setScannerStep('connecting');
+      setScannerStatusMsg(lang === 'ar' ? 'جارٍ البحث التلقائي عبر الشبكة (UDP & Wi-Fi)...' : 'Recherche automatique...');
+
+      if (discoveryListenerRef.current) {
+        try { await discoveryListenerRef.current.remove(); } catch {}
+      }
+
+      discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', async (peer) => {
+        if (!peer || !peer.host) return;
+
+        // Immediately update UI with discovered active server IP
+        const serverUrl = `http://${peer.host}:${peer.port || 8080}`;
+        setScannerStep('downloading');
+        setScannerStatusMsg(
+          lang === 'ar'
+            ? `تم العثور على الخادم (${peer.host}:${peer.port || 8080})! جارٍ المزامنة...`
+            : `Connecté à ${peer.host}:${peer.port || 8080}... Synchronisation...`
+        );
+
+        try {
+          const syncRes = await fetchSyncPayloadFromUrl(serverUrl);
+          if (syncRes.success) {
+            setScannerStep('complete');
+            setScannerStatusMsg(
+              lang === 'ar'
+                ? `تم الاتصال بـ ${peer.host} وتحديث ${syncRes.count} عضو بنجاح!`
+                : `Connecté à ${peer.host} - ${syncRes.count} membres synchronisés !`
+            );
+            onPlansUpdated();
+            try { await LocalSyncServer.stopDiscovery(); } catch {}
+            setTimeout(() => {
+              setScannerStep('idle');
+              setScannerStatusMsg('');
+            }, 3000);
+          }
+        } catch (pullErr: any) {
+          setScannerStep('error');
+          setScannerStatusMsg(pullErr?.message || 'فشل تحميل البيانات من الخادم');
+        }
+      });
+
+      await LocalSyncServer.startDiscovery();
+
+      // Safe timeout: Stop discovery after 10s if nothing found
+      setTimeout(async () => {
+        try { await LocalSyncServer.stopDiscovery(); } catch {}
+        setScannerStep((prev) => (prev === 'connecting' ? 'error' : prev));
+        setScannerStatusMsg((prev) =>
+          prev.includes('جارٍ البحث') || prev.includes('Recherche')
+            ? (lang === 'ar' ? 'تعذر العثور التلقائي. تأكد من تشغيل الخادم بالهاتف الأول، أو امسح رمز QR.' : 'Aucun serveur détecté. Activez le serveur ou scannez le QR.')
+            : prev
+        );
+      }, 10000);
+    } catch (e: any) {
+      console.warn('Auto discovery start error:', e);
     }
   };
 
@@ -632,6 +684,18 @@ export function SettingsTab({
           ? 'تعذر الوصول للكاميرا. يمكنك إدخال عنوان IP يدوياً بالأسفل.'
           : 'Erreur d accès à la caméra. Vous pouvez saisir l adresse IP ci-dessous.'
       );
+    }
+  };
+
+
+    const handleCopySyncText = async () => {
+    if (!compressedPayload) return;
+    try {
+      await navigator.clipboard.writeText(compressedPayload);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2500);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -1580,14 +1644,26 @@ export function SettingsTab({
 
                 {!isReceiverScannerOpen && (
                   <div className="pt-1 space-y-2">
-                    <Button
-                      size="sm"
-                      onClick={startReceiverScanner}
-                      className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
-                    >
-                      <Camera className="w-4 h-4" />
-                      <span>{lang === 'ar' ? 'مسح رمز QR للاتصال والسحب الفوري' : 'Scanner le QR Code pour synchroniser'}</span>
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        onClick={startBackgroundAutoDiscovery}
+                        className="h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                      >
+                        <Radio className="w-4 h-4 text-white animate-pulse" />
+                        <span>{lang === 'ar' ? 'البحث التلقائي (Wi-Fi/UDP)' : 'Auto Détection Wi-Fi'}</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={startReceiverScanner}
+                        variant="outline"
+                        className="h-11 text-xs font-bold rounded-xl border border-[var(--primary-border)] bg-[var(--surface)] text-[var(--text-primary)] hover:bg-[var(--surface-hover)] flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                      >
+                        <Camera className="w-4 h-4 text-[var(--primary)]" />
+                        <span>{lang === 'ar' ? 'مسح رمز QR' : 'Scanner QR'}</span>
+                      </Button>
+                    </div>
 
                     {/* Graceful Fallback Manual Input */}
                     <div className="pt-1">
