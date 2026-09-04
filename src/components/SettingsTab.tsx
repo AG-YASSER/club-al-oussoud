@@ -489,28 +489,27 @@ export function SettingsTab({
           }
         } catch {}
 
-        // Enumerate local IP address
-        let detectedHost = '0.0.0.0';
-        if (res?.ips && Array.isArray(res.ips) && res.ips.length > 0) {
-          // Filter out loopbacks and pick real Wi-Fi IP
-          const nonLoopbacks = res.ips.filter((ip) => ip !== '127.0.0.1' && ip !== 'localhost' && ip !== '0.0.0.0');
-          setServerIps(nonLoopbacks.length > 0 ? nonLoopbacks : res.ips);
-          detectedHost = nonLoopbacks.length > 0 ? nonLoopbacks[0] : res.ips[0];
-        } else if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost') {
-          detectedHost = window.location.hostname;
-          setServerIps([detectedHost]);
+        // STRICT REAL WI-FI IP RESOLUTION (Never 0.0.0.0, never localhost)
+        const nonLoopbacks = (res?.ips || []).filter(
+          (ip) => ip && ip !== '127.0.0.1' && ip !== 'localhost' && ip !== '0.0.0.0'
+        );
+
+        let finalIp = '';
+        if (nonLoopbacks.length > 0) {
+          finalIp = nonLoopbacks[0];
+          setServerIps(nonLoopbacks);
+        } else if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '0.0.0.0') {
+          finalIp = window.location.hostname;
+          setServerIps([finalIp]);
         }
 
-        const token = Math.random().toString(36).substring(2, 8).toUpperCase();
-        setPairingToken(token);
-
-        const serverUrl = `http://${detectedHost}:${port}`;
-        const qrJson = JSON.stringify({
-          url: serverUrl,
-          token
-        });
-        setPairingQrPayload(qrJson);
-
+        if (finalIp) {
+          const serverUrl = `http://${finalIp}:${port}`;
+          setPairingQrPayload(serverUrl);
+        } else {
+          setServerIps([]);
+          setPairingQrPayload('');
+        }
       } catch (err: any) {
         console.error('Failed to start server:', err);
         showAlert(
@@ -522,65 +521,86 @@ export function SettingsTab({
     }
   };
 
-  // Client Auto-Discovery Listener: Listens for UDP multicast & fast subnet sweep
-  const startBackgroundAutoDiscovery = async () => {
+  // Direct 1-Hit Sync Request: Connects directly and imports Dexie.js database in a single hit
+  const executeDirectSyncFetch = async (targetUrlOrIp: string) => {
+    let clean = targetUrlOrIp.trim();
+    if (!clean) return;
+
+    // Parse if QR JSON payload was passed
     try {
-      setScannerStep('connecting');
-      setScannerStatusMsg(lang === 'ar' ? 'جارٍ البحث التلقائي عبر الشبكة (UDP & Wi-Fi)...' : 'Recherche automatique...');
-
-      if (discoveryListenerRef.current) {
-        try { await discoveryListenerRef.current.remove(); } catch {}
+      if (clean.startsWith('{') && clean.endsWith('}')) {
+        const parsed = JSON.parse(clean);
+        if (parsed.url) clean = parsed.url;
       }
+    } catch {}
 
-      discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', async (peer) => {
-        if (!peer || !peer.host) return;
+    setScannerStep('connecting');
+    setScannerStatusMsg(lang === 'ar' ? 'جارٍ الاتصال وسحب البيانات...' : 'Connexion et synchronisation...');
 
-        // Immediately update UI with discovered active server IP
-        const serverUrl = `http://${peer.host}:${peer.port || 8080}`;
-        setScannerStep('downloading');
+    try {
+      const res = await fetchSyncPayloadFromUrl(clean);
+      if (res.success) {
+        setScannerStep('complete');
         setScannerStatusMsg(
           lang === 'ar'
-            ? `تم العثور على الخادم (${peer.host}:${peer.port || 8080})! جارٍ المزامنة...`
-            : `Connecté à ${peer.host}:${peer.port || 8080}... Synchronisation...`
+            ? `تم الاتصال وتحديث ${res.count} عضو بنجاح!`
+            : `Synchronisation réussie (${res.count} membres) !`
         );
-
-        try {
-          const syncRes = await fetchSyncPayloadFromUrl(serverUrl);
-          if (syncRes.success) {
-            setScannerStep('complete');
-            setScannerStatusMsg(
-              lang === 'ar'
-                ? `تم الاتصال بـ ${peer.host} وتحديث ${syncRes.count} عضو بنجاح!`
-                : `Connecté à ${peer.host} - ${syncRes.count} membres synchronisés !`
-            );
-            onPlansUpdated();
-            try { await LocalSyncServer.stopDiscovery(); } catch {}
-            setTimeout(() => {
-              setScannerStep('idle');
-              setScannerStatusMsg('');
-            }, 3000);
-          }
-        } catch (pullErr: any) {
-          setScannerStep('error');
-          setScannerStatusMsg(pullErr?.message || 'فشل تحميل البيانات من الخادم');
-        }
-      });
-
-      await LocalSyncServer.startDiscovery();
-
-      // Safe timeout: Stop discovery after 10s if nothing found
-      setTimeout(async () => {
-        try { await LocalSyncServer.stopDiscovery(); } catch {}
-        setScannerStep((prev) => (prev === 'connecting' ? 'error' : prev));
-        setScannerStatusMsg((prev) =>
-          prev.includes('جارٍ البحث') || prev.includes('Recherche')
-            ? (lang === 'ar' ? 'تعذر العثور التلقائي. تأكد من تشغيل الخادم بالهاتف الأول، أو امسح رمز QR.' : 'Aucun serveur détecté. Activez le serveur ou scannez le QR.')
-            : prev
-        );
-      }, 10000);
+        onPlansUpdated();
+        setTimeout(() => {
+          setScannerStep('idle');
+          setScannerStatusMsg('');
+          setIsReceiverScannerOpen(false);
+        }, 2200);
+      } else {
+        setScannerStep('error');
+        setScannerStatusMsg(res.message);
+      }
     } catch (e: any) {
-      console.warn('Auto discovery start error:', e);
+      setScannerStep('error');
+      setScannerStatusMsg(e.message || (lang === 'ar' ? 'فشل الاتصال بالخادم' : 'Échec de connexion'));
     }
+  };
+
+  // 1-Tap Auto-Discovery (Native UDP Broadcast / Auto-Detect)
+  const handleAutoDiscoverySync = async () => {
+    setScannerStep('connecting');
+    setScannerStatusMsg(lang === 'ar' ? 'جارٍ البحث التلقائي عبر الشبكة...' : 'Recherche automatique...');
+
+    if (discoveryListenerRef.current) {
+      try { await discoveryListenerRef.current.remove(); } catch {}
+    }
+
+    let resolved = false;
+
+    discoveryListenerRef.current = await LocalSyncServer.addListener('peerFound', async (peer) => {
+      if (!peer || !peer.host || resolved) return;
+      resolved = true;
+      try { await LocalSyncServer.stopDiscovery(); } catch {}
+
+      const targetEndpoint = `http://${peer.host}:${peer.port || 8080}`;
+      setScannerStatusMsg(
+        lang === 'ar'
+          ? `تم العثور على الخادم (${peer.host})! جارٍ المزامنة...`
+          : `Serveur trouvé (${peer.host}) ! Synchronisation...`
+      );
+      await executeDirectSyncFetch(targetEndpoint);
+    });
+
+    await LocalSyncServer.startDiscovery();
+
+    // 4-Second Timeout for UDP Discovery before showing clean 1-line prompt
+    setTimeout(async () => {
+      if (!resolved) {
+        try { await LocalSyncServer.stopDiscovery(); } catch {}
+        setScannerStep('error');
+        setScannerStatusMsg(
+          lang === 'ar'
+            ? 'تعذر الاكتشاف التلقائي. تأكد من تشغيل الخادم بالهاتف الأول، أو امسح رمز QR أدناه.'
+            : 'Détection auto bloquée par le routeur. Scannez le QR code ci-dessous.'
+        );
+      }
+    }, 4000);
   };
 
   // Stop Client Camera Scanner
@@ -595,46 +615,6 @@ export function SettingsTab({
       receiverHtml5QrRef.current = null;
     }
     setIsReceiverScannerOpen(false);
-  };
-
-  // Process QR pairing data directly: [1. Scan] -> [2. Connecting] -> [3. Downloading] -> [4. Complete]
-  const handleProcessPairingUrl = async (rawUrlOrJson: string) => {
-    try {
-      setScannerStep('connecting');
-      setScannerStatusMsg(lang === 'ar' ? 'جارٍ الاتصال بالهاتف الخادم...' : 'Connexion au serveur...');
-
-      let targetUrl = rawUrlOrJson.trim();
-      try {
-        const parsed = JSON.parse(targetUrl);
-        if (parsed.url) targetUrl = parsed.url;
-      } catch {}
-
-      setScannerStep('downloading');
-      setScannerStatusMsg(lang === 'ar' ? 'جارٍ تحميل ودمج قاعدة البيانات...' : 'Téléchargement de la base de données...');
-
-      const result = await fetchSyncPayloadFromUrl(targetUrl);
-
-      if (result.success) {
-        setScannerStep('complete');
-        setScannerStatusMsg(
-          lang === 'ar'
-            ? `اكتملت المزامنة بنجاح! (${result.count} عضو)`
-            : `Synchronisation réussie (${result.count} membres) !`
-        );
-        onPlansUpdated();
-        setTimeout(() => {
-          setScannerStep('idle');
-          setScannerStatusMsg('');
-          setIsReceiverScannerOpen(false);
-        }, 2200);
-      } else {
-        setScannerStep('error');
-        setScannerStatusMsg(result.message);
-      }
-    } catch (err: any) {
-      setScannerStep('error');
-      setScannerStatusMsg(err.message || (lang === 'ar' ? 'فشل الاتصال بالخادم' : 'Échec de connexion'));
-    }
   };
 
   // Start Client Camera Scanner
@@ -672,7 +652,7 @@ export function SettingsTab({
         },
         async (decodedText) => {
           await stopReceiverScanner();
-          await handleProcessPairingUrl(decodedText);
+          await executeDirectSyncFetch(decodedText);
         },
         () => {}
       );
@@ -682,13 +662,12 @@ export function SettingsTab({
       setScannerStatusMsg(
         lang === 'ar'
           ? 'تعذر الوصول للكاميرا. يمكنك إدخال عنوان IP يدوياً بالأسفل.'
-          : 'Erreur d accès à la caméra. Vous pouvez saisir l adresse IP ci-dessous.'
+          : 'Erreur d accès caméra. Saisissez l adresse IP ci-dessous.'
       );
     }
   };
 
-
-    const handleCopySyncText = async () => {
+  const handleCopySyncText = async () => {
     if (!compressedPayload) return;
     try {
       await navigator.clipboard.writeText(compressedPayload);
@@ -1483,11 +1462,11 @@ export function SettingsTab({
             </div>
           )}
 
-          {/* TAB 3: Deterministic QR-Code Pairing & Direct Endpoints */}
+          {/* TAB 3: Deterministic Wi-Fi Sync Engine */}
           {syncTab === 'wifi' && (
             <div className="space-y-4 animate-in fade-in duration-150">
 
-              {/* 1. SERVER / RECEIVER MODE */}
+              {/* CARD 1: HOST / SERVER (Broadcaster) */}
               <div className="p-4 rounded-2xl border border-[var(--primary-border)] bg-[var(--card)] space-y-3 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -1496,10 +1475,10 @@ export function SettingsTab({
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
-                        {lang === 'ar' ? '1. الهاتف المضيف (تشغيل الخادم)' : '1. Téléphone Serveur (Émission)'}
+                        {lang === 'ar' ? '1. الهاتف المضيف (مشاركة البيانات)' : '1. Téléphone Hôte (Partage)'}
                       </h4>
                       <p className="text-[10px] text-[var(--text-muted)]">
-                        {lang === 'ar' ? 'توليد نقطة الاقتران ورمز QR للمزامنة الفورية' : 'Génération du QR code de liaison directe'}
+                        {lang === 'ar' ? 'تشغيل الخادم المحلي وبث البيانات للأجهزة المتصلة' : 'Démarrer le serveur local pour transmettre les données'}
                       </p>
                     </div>
                   </div>
@@ -1514,7 +1493,7 @@ export function SettingsTab({
                     }`} />
                     <span>
                       {isServerRunning
-                        ? (lang === 'ar' ? 'الخادم نشط وجاهز' : 'Serveur Actif')
+                        ? (lang === 'ar' ? 'الخادم نشط' : 'Serveur Actif')
                         : (lang === 'ar' ? 'متوقف' : 'Inactif')}
                     </span>
                   </span>
@@ -1527,34 +1506,36 @@ export function SettingsTab({
                     className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
                   >
                     <Server className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'تشغيل الخادم وعرض رمز QR' : 'Démarrer le serveur et afficher QR'}</span>
+                    <span>{lang === 'ar' ? 'بدء المشاركة وتشغيل الخادم' : 'Démarrer le partage et le serveur'}</span>
                   </Button>
                 ) : (
                   <div className="space-y-3 pt-1 animate-in fade-in">
-                    {/* QR Code display */}
+                    {/* Clean QR code display (Contains only real Wi-Fi IP) */}
                     <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-white text-zinc-950 border border-[var(--border)] shadow-sm space-y-2">
                       <QRCodeSVG
-                        value={pairingQrPayload || 'http://127.0.0.1:8080/api/sync-export'}
-                        size={180}
+                        value={pairingQrPayload || 'http://127.0.0.1:8080'}
+                        size={170}
                         level="M"
                         includeMargin={true}
                         className="rounded-lg"
                       />
-                      <div className="text-center space-y-0.5">
-                        <span className="text-[11px] font-black font-mono text-zinc-800 block">
-                          {serverIps.length > 0 ? `http://${serverIps[0]}:${serverPort || 8080}` : `http://127.0.0.1:${serverPort || 8080}`}
-                        </span>
-                        <span className="text-[10px] text-zinc-500 block font-medium">
-                          {lang === 'ar' ? 'امسح هذا الرمز من الهاتف الثاني للربط المباشر' : 'Scannez ce QR code sur le 2ème téléphone'}
-                        </span>
-                      </div>
+                      {serverIps.length > 0 && (
+                        <div className="text-center">
+                          <span className="text-xs font-black font-mono text-zinc-900 block">
+                            http://{serverIps[0]}:{serverPort || 8080}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 block font-medium">
+                            {lang === 'ar' ? 'عنوان الهاتف في شبكة Wi-Fi' : 'Adresse Wi-Fi locale'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 text-[var(--primary)] animate-spin" />
                         <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                          {lang === 'ar' ? 'في انتظار طلب المزامنة من الهاتف الثاني...' : 'En attente de connexion du 2ème appareil...'}
+                          {lang === 'ar' ? 'الخادم نشط - في انتظار الهاتف الثاني...' : 'Serveur actif - En attente du 2ème appareil...'}
                         </span>
                       </div>
 
@@ -1572,23 +1553,23 @@ export function SettingsTab({
                 )}
               </div>
 
-              {/* 2. CLIENT / SCANNER MODE */}
+              {/* CARD 2: CLIENT / RECEIVER (Instant 1-Hit Sync) */}
               <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] space-y-3 shadow-sm">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--primary)]">
-                    <Camera className="w-5 h-5" />
+                    <Radio className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
-                      {lang === 'ar' ? '2. الهاتف المستلم (مسح الكاميرا وسحب البيانات)' : '2. Téléphone Client (Scan Caméra)'}
+                      {lang === 'ar' ? '2. الهاتف المستلم (سحب البيانات)' : '2. Téléphone Récepteur (Synchronisation)'}
                     </h4>
                     <p className="text-[10px] text-[var(--text-muted)]">
-                      {lang === 'ar' ? 'مسح رمز QR الخاص بالهاتف الأول لسحب كافة المشتركين' : 'Scannez le QR code affiché sur le 1er téléphone'}
+                      {lang === 'ar' ? 'الاتصال المباشر بالهاتف المضيف وتحديث المشتركين فوراً' : 'Connexion directe et mise à jour immédiate'}
                     </p>
                   </div>
                 </div>
 
-                {/* Step-by-Step Transition State UI */}
+                {/* Inline Status Callout */}
                 {scannerStep !== 'idle' && (
                   <div className={`p-3 rounded-xl border text-xs font-bold text-center space-y-1 animate-in fade-in ${
                     scannerStep === 'complete'
@@ -1607,10 +1588,8 @@ export function SettingsTab({
                       )}
                       <span>
                         {scannerStep === 'connecting'
-                          ? (lang === 'ar' ? 'خطوة 1/2: جارٍ الاتصال بالخادم...' : 'Étape 1/2: Connexion au serveur...')
-                          : scannerStep === 'downloading'
-                          ? (lang === 'ar' ? 'خطوة 2/2: تحميل البيانات ودمجها...' : 'Étape 2/2: Téléchargement des données...')
-                          : scannerStatusMsg || (lang === 'ar' ? 'جارٍ المعالجة...' : 'En cours...')}
+                          ? (lang === 'ar' ? 'جارٍ الاتصال بالخادم...' : 'Connexion au serveur...')
+                          : scannerStatusMsg || (lang === 'ar' ? 'جارٍ المعالجة...' : 'Traitement...')}
                       </span>
                     </div>
                     {scannerStep === 'error' && (
@@ -1621,7 +1600,7 @@ export function SettingsTab({
                   </div>
                 )}
 
-                {/* Camera Viewfinder */}
+                {/* Camera Viewfinder if scanning */}
                 {isReceiverScannerOpen && (
                   <div className="space-y-2 animate-in fade-in">
                     <div
@@ -1636,22 +1615,24 @@ export function SettingsTab({
                         className="h-8 text-xs font-bold border-[var(--danger-border)] text-[var(--danger)] hover:bg-red-500/10"
                       >
                         <X className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'إلغاء المسح' : 'Annuler'}</span>
+                        <span>{lang === 'ar' ? 'إلغاء الكاميرا' : 'Annuler'}</span>
                       </Button>
                     </div>
                   </div>
                 )}
 
+                {/* Actions: Auto Discovery + QR Scanner + Direct IP Fallback */}
                 {!isReceiverScannerOpen && (
-                  <div className="pt-1 space-y-2">
+                  <div className="pt-1 space-y-2.5">
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         size="sm"
-                        onClick={startBackgroundAutoDiscovery}
+                        onClick={handleAutoDiscoverySync}
+                        disabled={scannerStep === 'connecting'}
                         className="h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-98"
                       >
                         <Radio className="w-4 h-4 text-white animate-pulse" />
-                        <span>{lang === 'ar' ? 'البحث التلقائي (Wi-Fi/UDP)' : 'Auto Détection Wi-Fi'}</span>
+                        <span>{lang === 'ar' ? 'اتصال تلقائي (Wi-Fi)' : 'Auto Détection'}</span>
                       </Button>
 
                       <Button
@@ -1665,19 +1646,19 @@ export function SettingsTab({
                       </Button>
                     </div>
 
-                    {/* Graceful Fallback Manual Input */}
+                    {/* Direct IP input */}
                     <div className="pt-1">
                       <div className="flex gap-2">
                         <Input
                           value={localIpInput}
                           onChange={(e) => setLocalIpInput(e.target.value)}
-                          placeholder="http://192.168.1.50:8080"
+                          placeholder="192.168.11.104:8080"
                           className="h-9 text-xs font-mono bg-[var(--surface)] border-[var(--border)] text-[var(--text-primary)]"
                         />
                         <Button
                           size="sm"
-                          onClick={() => handleProcessPairingUrl(localIpInput)}
-                          disabled={!localIpInput.trim()}
+                          onClick={() => executeDirectSyncFetch(localIpInput)}
+                          disabled={!localIpInput.trim() || scannerStep === 'connecting'}
                           className="h-9 px-4 text-xs font-bold rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text-primary)] shrink-0"
                         >
                           <ArrowDownLeft className="w-3.5 h-3.5 text-[var(--primary)]" />
@@ -1685,7 +1666,7 @@ export function SettingsTab({
                         </Button>
                       </div>
                       <span className="text-[10px] text-[var(--text-muted)] text-center block pt-1">
-                        {lang === 'ar' ? 'يمكنك إدخال الرابط يدوياً في حالة تعذر تشغيل الكاميرا' : 'Entrez l adresse IP si la caméra est indisponible'}
+                        {lang === 'ar' ? 'يمكنك إدخال عنوان IP الموضح في الهاتف الأول مباشرة' : 'Vous pouvez saisir l IP affichée sur le premier téléphone'}
                       </span>
                     </div>
                   </div>
