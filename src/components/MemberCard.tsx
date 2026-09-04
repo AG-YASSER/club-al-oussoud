@@ -1,14 +1,27 @@
 import React, { useState } from 'react';
 import { Member, MembershipPlan, getSubscriptionStatus } from '../db/db';
-import { Avatar, Badge, Button } from './ui/shadcn';
-import { Phone, MessageCircle, RefreshCw, ChevronDown, ChevronUp, MessageSquare, Trash2, Edit3, Banknote } from 'lucide-react';
+import { Avatar, Badge } from './ui/shadcn';
+import {
+  Phone,
+  MessageCircle,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  Trash2,
+  Edit3,
+  Banknote,
+  CheckCircle,
+  Lock
+} from 'lucide-react';
 import { SupportedLanguage, translations, getWhatsAppReminder } from '../utils/i18n';
 
 interface MemberCardProps {
   member: Member;
   plans: MembershipPlan[];
-    onRenew: (member: Member) => void;
-  onTogglePaymentStatus: (member: Member) => void;
+  onRenew: (member: Member) => void;
+  onSettleDebt: (member: Member) => void;
+  onBlockedRenewal?: (member: Member) => void;
   onDeleteMember?: (member: Member) => void;
   onEditMember?: (member: Member) => void;
   lang?: SupportedLanguage;
@@ -17,8 +30,9 @@ interface MemberCardProps {
 export function MemberCard({
   member,
   plans,
-    onRenew,
-  onTogglePaymentStatus,
+  onRenew,
+  onSettleDebt,
+  onBlockedRenewal,
   onDeleteMember,
   onEditMember,
   lang = 'fr'
@@ -26,6 +40,9 @@ export function MemberCard({
   const [expanded, setExpanded] = useState(false);
   const { status, daysRemaining } = getSubscriptionStatus(member);
   const t = translations[lang] || translations.fr;
+
+  const currentDebt = member.amountDue || 0;
+  const hasDebt = currentDebt > 0 || !member.isPaid;
 
   // Standardize Moroccan phone number
   const cleanPhone = (rawPhone: string) => {
@@ -37,12 +54,20 @@ export function MemberCard({
   };
 
   const formattedPhone = cleanPhone(member.phone);
-  const waReminderText = getWhatsAppReminder(lang, member.fullName, member.planName, daysRemaining, !member.isPaid);
+  const waReminderText = getWhatsAppReminder(lang, member.fullName, member.planName, daysRemaining, hasDebt);
   const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(waReminderText)}`;
   const callUrl = `tel:+${formattedPhone}`;
   const smsUrl = `sms:+${formattedPhone}?body=${encodeURIComponent(waReminderText)}`;
 
   const getStatusBadge = () => {
+    if (hasDebt) {
+      return (
+        <Badge variant="outline" className="bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-border)] text-[10px] px-1.5 py-0 font-bold">
+          {lang === 'ar' ? `دين: ${currentDebt} DH` : `Dette: ${currentDebt} DH`}
+        </Badge>
+      );
+    }
+
     switch (status) {
       case 'active':
         return (
@@ -62,25 +87,34 @@ export function MemberCard({
             {t.filterExpired}
           </Badge>
         );
-      case 'unpaid':
-        return (
-          <Badge variant="outline" className="bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-border)] text-[10px] px-1.5 py-0 font-medium">
-            {t.unpaid} ({member.amountDue || 0} {t.currency})
-          </Badge>
-        );
+      default:
+        return null;
     }
   };
 
   const getStatusDot = () => {
+    if (hasDebt) return 'bg-[var(--danger)] ring-2 ring-red-500/20';
     switch (status) {
       case 'active':
         return 'bg-[var(--success)]';
       case 'expiring':
         return 'bg-[var(--warning)] animate-ping';
       case 'expired':
-      case 'unpaid':
         return 'bg-[var(--danger)]';
+      default:
+        return 'bg-zinc-500';
     }
+  };
+
+  const handleRenewClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (hasDebt) {
+      if (onBlockedRenewal) {
+        onBlockedRenewal(member);
+      }
+      return;
+    }
+    onRenew(member);
   };
 
   return (
@@ -93,7 +127,7 @@ export function MemberCard({
         <div className="flex items-center space-x-3 rtl:space-x-reverse min-w-0">
           <div className="relative flex-shrink-0">
             <Avatar
-              src={member.photo || (member as any).avatarWebP || undefined}
+              src={member.photo || undefined}
               fallback={member.fullName.substring(0, 2).toUpperCase()}
               className="w-11 h-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)]"
             />
@@ -114,7 +148,7 @@ export function MemberCard({
           </div>
         </div>
 
-        {/* Right side: Check-in & Chevron */}
+        {/* Right side: Chevron */}
         <div className="flex items-center gap-2 ml-2 rtl:ml-0 rtl:mr-2 flex-shrink-0">
           <button type="button" className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -179,38 +213,47 @@ export function MemberCard({
               <span>{t.sms}</span>
             </a>
 
+            {/* Renewal Button (Disabled / Warning if active debt exists) */}
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRenew(member);
-              }}
-              className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)] text-[11px] font-bold shadow-md transition-colors active:scale-95"
-              title={t.renew}
+              onClick={handleRenewClick}
+              className={`flex flex-col items-center justify-center py-2 rounded-lg text-[11px] font-bold shadow-md transition-colors active:scale-95 ${
+                hasDebt
+                  ? 'bg-zinc-800 text-zinc-500 border border-zinc-700/60 cursor-not-allowed'
+                  : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)]'
+              }`}
+              title={hasDebt ? (lang === 'ar' ? 'التجديد معطل (يوجد دين)' : lang === 'en' ? 'Renewal Blocked (Debt)' : 'Dette en cours') : (lang === 'ar' ? 'تجديد' : lang === 'en' ? 'Renew' : t.renew)}
             >
-              <RefreshCw className="w-4 h-4 text-[var(--primary-foreground)] mb-0.5" />
+              {hasDebt ? (
+                <Lock className="w-4 h-4 text-zinc-500 mb-0.5" />
+              ) : (
+                <RefreshCw className="w-4 h-4 text-[var(--primary-foreground)] mb-0.5" />
+              )}
               <span>{t.renew}</span>
             </button>
           </div>
 
-          {/* Bottom 3 Actions: Toggle Paid, Edit, Delete */}
+          {/* Bottom 3 Actions: Settle Debt, Edit, Delete */}
           <div className="grid grid-cols-3 gap-1.5 pt-1">
-            {/* 1. Toggle Paid / Unpaid */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePaymentStatus(member);
-              }}
-              className={`py-2 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-colors active:scale-95 ${
-                member.isPaid
-                  ? 'border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white'
-                  : 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)] hover:bg-[var(--success)] hover:text-white'
-              }`}
-            >
-              <Banknote className="w-3.5 h-3.5" />
-              <span className="truncate">{member.isPaid ? t.markUnpaid : t.markPaid}</span>
-            </button>
+            {/* 1. Settle Debt Button */}
+            {hasDebt ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSettleDebt(member);
+                }}
+                className="py-2 px-2 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] hover:bg-[var(--danger)] hover:text-white text-[var(--danger)] text-xs font-bold flex items-center justify-center gap-1 transition-colors active:scale-95"
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                <span className="truncate">{lang === 'ar' ? `استخلاص (${currentDebt} DH)` : `Encaisser (${currentDebt} DH)`}</span>
+              </button>
+            ) : (
+              <div className="py-2 px-2 rounded-lg border border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)] text-xs font-bold flex items-center justify-center gap-1 opacity-90 select-none">
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span className="truncate">{lang === 'ar' ? 'الحساب خالص (0 DH)' : 'Soldé (0 DH)'}</span>
+              </div>
+            )}
 
             {/* 2. Edit Member Button */}
             <button

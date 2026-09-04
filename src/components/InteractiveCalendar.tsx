@@ -1,14 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { Member, MembershipPlan, getSubscriptionStatus } from '../db/db';
-import { Card, Badge, Button, Sheet } from './ui/shadcn';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Member, MembershipPlan, db } from '../db/db';
+import { Card, Badge, Button } from './ui/shadcn';
 import {
+  Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  Calendar as CalendarIcon,
   Phone,
   MessageCircle,
-  Banknote,
-  RefreshCw
+  RefreshCw,
+  Banknote
 } from 'lucide-react';
 import {
   format,
@@ -23,121 +23,424 @@ import {
   isSameDay,
   isToday
 } from 'date-fns';
-import { fr, ar, enUS } from 'date-fns/locale';
-import { SupportedLanguage, translations, getWhatsAppReminder } from '../utils/i18n';
+import { ar, fr, enUS } from 'date-fns/locale';
+import { SupportedLanguage, getWhatsAppReminder } from '../utils/i18n';
 
 interface InteractiveCalendarProps {
   members: Member[];
-  plans: MembershipPlan[];
+  plans?: MembershipPlan[];
   onRenew: (member: Member) => void;
-  onTogglePayment: (member: Member) => void;
-  lang: SupportedLanguage;
+  onSettleDebt: (member: Member) => void;
+  onBlockedRenewal?: (member: Member) => void;
+  lang?: SupportedLanguage;
 }
 
-type CalendarFilterMode = 'all' | 'expiring' | 'unpaid';
+/**
+ * Normalizes any Date or date string to strict YYYY-MM-DD
+ * Eliminates all timezone offset shifts between UTC and local time!
+ */
+export function normalizeDateKey(dateInput: Date | string | undefined | null): string {
+  if (!dateInput) return '';
+  if (typeof dateInput === 'string') {
+    const match = dateInput.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
+    const y = dateInput.getFullYear();
+    const m = String(dateInput.getMonth() + 1).padStart(2, '0');
+    const d = String(dateInput.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return '';
+}
+
+function cleanPhone(phoneStr: string): string {
+  const digits = phoneStr ? phoneStr.replace(/\D/g, '') : '';
+  if (digits.startsWith('0')) return '212' + digits.substring(1);
+  if (digits.startsWith('212')) return digits;
+  return '212' + digits;
+}
 
 export function InteractiveCalendar({
   members,
-  plans,
   onRenew,
-  onTogglePayment,
-  lang
+  onSettleDebt,
+  lang = 'ar'
 }: InteractiveCalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [isDaySheetOpen, setIsDaySheetOpen] = useState(false);
-  const [filterMode, setFilterMode] = useState<CalendarFilterMode>('all');
-  const t = translations[lang] || translations.fr;
+  const [filterMode, setFilterMode] = useState<'all' | 'expiring' | 'debts'>('all');
+  const [liveDbMembers, setLiveDbMembers] = useState<Member[]>([]);
 
-  const dateLocale = lang === 'ar' ? ar : lang === 'en' ? enUS : fr;
+  const isRTL = lang === 'ar';
 
+  const dateLocale = useMemo(() => {
+    switch (lang) {
+      case 'ar':
+        return ar;
+      case 'en':
+        return enUS;
+      default:
+        return fr;
+    }
+  }, [lang]);
+
+  // Merge prop members with fallback to direct IndexedDB query for absolute real-time sync
+  useEffect(() => {
+    let isMounted = true;
+    const fetchDbMembers = async () => {
+      try {
+        const list = await db.members.filter((m) => !m.isDeleted).toArray();
+        if (isMounted && list.length > 0) {
+          setLiveDbMembers(list);
+        }
+      } catch (err) {
+        console.error('Failed to query members for calendar:', err);
+      }
+    };
+    fetchDbMembers();
+    return () => {
+      isMounted = false;
+    };
+  }, [members]);
+
+  const activeMembers = useMemo(() => {
+    const source = members && members.length > 0 ? members : liveDbMembers;
+    return source.filter((m) => !m.isDeleted);
+  }, [members, liveDbMembers]);
+
+  /**
+   * Calendar Agenda Data Structure:
+   * Maps each date string (YYYY-MM-DD) to expiring members and debt members.
+   * - Expiring: member.expiryDate === dateKey
+   * - Debts: (amountDue > 0 || !isPaid) AND (member.startDate === dateKey || member.expiryDate === dateKey)
+   */
+  const agendaByDate = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        expiring: Member[];
+        debts: Member[];
+        all: Member[];
+      }
+    > = {};
+
+    const getEntry = (key: string) => {
+      if (!map[key]) {
+        map[key] = { expiring: [], debts: [], all: [] };
+      }
+      return map[key];
+    };
+
+    activeMembers.forEach((member) => {
+      const hasDebt = (member.amountDue || 0) > 0 || !member.isPaid;
+      const expiryKey = normalizeDateKey(member.expiryDate);
+      const startKey = normalizeDateKey(member.startDate);
+
+      // 1. Subscription Expiration: Map to expiryDate
+      if (expiryKey) {
+        const entry = getEntry(expiryKey);
+        if (!hasDebt) {
+          entry.expiring.push(member);
+        }
+        if (!entry.all.some((m) => m.id === member.id)) {
+          entry.all.push(member);
+        }
+      }
+
+      // 2. Unpaid Debt: Map to startDate (date debt was recorded) and expiryDate
+      if (hasDebt) {
+        if (startKey) {
+          const startEntry = getEntry(startKey);
+          if (!startEntry.debts.some((m) => m.id === member.id)) {
+            startEntry.debts.push(member);
+          }
+          if (!startEntry.all.some((m) => m.id === member.id)) {
+            startEntry.all.push(member);
+          }
+        }
+        if (expiryKey && expiryKey !== startKey) {
+          const expiryEntry = getEntry(expiryKey);
+          if (!expiryEntry.debts.some((m) => m.id === member.id)) {
+            expiryEntry.debts.push(member);
+          }
+          if (!expiryEntry.all.some((m) => m.id === member.id)) {
+            expiryEntry.all.push(member);
+          }
+        }
+      }
+    });
+
+    return map;
+  }, [activeMembers]);
+
+  // Calendar dates computation for current month view
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
-  const expiriesByDate = useMemo(() => {
-    return members.reduce((acc, m) => {
-      if (filterMode === 'unpaid' && m.isPaid) return acc;
-      if (filterMode === 'expiring' && !m.isPaid) return acc;
+  const selectedDateStr = normalizeDateKey(selectedDate);
+  const todayStr = normalizeDateKey(new Date());
 
-      if (!acc[m.expiryDate]) {
-        acc[m.expiryDate] = [];
-      }
-      acc[m.expiryDate].push(m);
-      return acc;
-    }, {} as Record<string, Member[]>);
-  }, [members, filterMode]);
+  // Filtered members for the currently selected date
+  const dayMembers = useMemo(() => {
+    const entry = agendaByDate[selectedDateStr];
+    if (!entry) return [];
 
-  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-  const dayMembers = expiriesByDate[selectedDateStr] || [];
+    if (filterMode === 'expiring') {
+      return entry.expiring;
+    }
+    if (filterMode === 'debts') {
+      return entry.debts;
+    }
+    return entry.all;
+  }, [agendaByDate, selectedDateStr, filterMode]);
+
+  // Metric counts for the current month
+  const monthlyExpiringCount = useMemo(() => {
+    return activeMembers.filter((m) => {
+      const expKey = normalizeDateKey(m.expiryDate);
+      if (!expKey) return false;
+      const isPaidMember = m.isPaid && (m.amountDue || 0) === 0;
+      const currentMonthPrefix = format(currentMonth, 'yyyy-MM');
+      return isPaidMember && expKey.startsWith(currentMonthPrefix);
+    }).length;
+  }, [activeMembers, currentMonth]);
+
+  const monthlyDebtsCount = useMemo(() => {
+    return activeMembers.filter((m) => (m.amountDue || 0) > 0 || !m.isPaid).length;
+  }, [activeMembers]);
+
+  const todayEventsCount = useMemo(() => {
+    return agendaByDate[todayStr]?.all.length || 0;
+  }, [agendaByDate, todayStr]);
 
   const handleDayClick = (day: Date) => {
     setSelectedDate(day);
-    setIsDaySheetOpen(true);
   };
 
-  const cleanPhone = (rawPhone: string) => {
-    let p = rawPhone ? rawPhone.replace(/\D/g, '') : '';
-    if (p.startsWith('0')) p = '212' + p.substring(1);
-    return p;
+  // Localized texts
+  const tTexts = {
+    monthExpirations:
+      lang === 'ar' ? 'انتهاء الشهر' : lang === 'en' ? 'Month Expirations' : 'Expirations du mois',
+    pendingDebts:
+      lang === 'ar' ? 'ديون معلقة' : lang === 'en' ? 'Pending Debts' : 'Dettes impayées',
+    todayEvents:
+      lang === 'ar' ? 'أحداث اليوم' : lang === 'en' ? "Today's Events" : "Aujourd'hui",
+    legendExpiry:
+      lang === 'ar' ? 'انتهاء اشتراك' : lang === 'en' ? 'Subscription Expiry' : 'Fin abonnement',
+    legendDebt:
+      lang === 'ar' ? 'دين غير مسدد' : lang === 'en' ? 'Pending Debt' : 'Dette impayée',
+    membersCount:
+      lang === 'ar' ? 'مشتركين' : lang === 'en' ? 'members' : 'membres',
+    filterAll:
+      lang === 'ar' ? 'الكل' : lang === 'en' ? 'All' : 'Tous',
+    filterExpiring:
+      lang === 'ar' ? 'الاشتراكات' : lang === 'en' ? 'Expirations' : 'Expirations',
+    filterDebts:
+      lang === 'ar' ? 'الديون' : lang === 'en' ? 'Debts' : 'Dettes',
+    callBtn:
+      lang === 'ar' ? 'اتصال' : lang === 'en' ? 'Call' : 'Appel',
+    waBtn:
+      lang === 'ar' ? 'واتساب' : lang === 'en' ? 'WhatsApp' : 'WhatsApp',
+    settleBtn:
+      lang === 'ar' ? 'استخلاص' : lang === 'en' ? 'Settle' : 'Encaisser',
+    renewBtn:
+      lang === 'ar' ? 'تجديد' : lang === 'en' ? 'Renew' : 'Renouveler',
+    debtBadge: (amount: number) =>
+      lang === 'ar' ? `دين: ${amount} DH` : lang === 'en' ? `Debt: ${amount} DH` : `Dû: ${amount} DH`,
+    expiringBadge:
+      lang === 'ar' ? 'انتهاء الاشتراك' : lang === 'en' ? 'Subscription Expiring' : 'Expire aujourd\'hui',
+    emptyNotice:
+      lang === 'ar'
+        ? 'لا توجد أي اشتراكات تنتهي أو ديون مسجلة في هذا اليوم.'
+        : lang === 'en'
+        ? 'No subscription expirations or pending debts on this day.'
+        : 'Aucune échéance ou dette enregistrée pour cette date.'
   };
 
   return (
-    <div className="space-y-4">
-      <Card className="border-zinc-800/80 bg-zinc-900/60 p-4">
-        {/* Month Navigation & Controls */}
-        <div className="flex items-center justify-between mb-4">
+    <div className={`space-y-4 pb-8 ${isRTL ? 'rtl' : 'ltr'}`}>
+      {/* 1. Quick Monthly Metric Cards */}
+      <div className="grid grid-cols-3 gap-2">
+        <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center space-y-1">
+          <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase block truncate">
+            {tTexts.monthExpirations}
+          </span>
+          <div className="text-base font-black text-orange-400 font-mono">
+            {monthlyExpiringCount}
+          </div>
+        </Card>
+
+        <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center space-y-1">
+          <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase block truncate">
+            {tTexts.pendingDebts}
+          </span>
+          <div className="text-base font-black text-[var(--danger)] font-mono">
+            {monthlyDebtsCount}
+          </div>
+        </Card>
+
+        <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center space-y-1">
+          <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase block truncate">
+            {tTexts.todayEvents}
+          </span>
+          <div className="text-base font-black text-[var(--primary)] font-mono">
+            {todayEventsCount}
+          </div>
+        </Card>
+      </div>
+
+      {/* 2. Interactive Monthly Calendar Grid */}
+      <Card className="bg-[var(--card)] border border-[var(--border)] p-4 space-y-4 shadow-sm">
+        {/* Month Header & Controls */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-orange-500" />
-            <h3 className="text-sm font-semibold text-zinc-100 capitalize">
+            <CalendarIcon className="w-4 h-4 text-[var(--primary)]" />
+            <h3 className="text-sm font-black tracking-tight text-[var(--text-primary)] capitalize">
               {format(currentMonth, 'MMMM yyyy', { locale: dateLocale })}
             </h3>
           </div>
 
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className="h-7 w-7"
+          <div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded-xl p-0.5">
+            <button
+              onClick={() => setCurrentMonth((prev) => subMonths(prev, 1))}
+              className="p-1.5 hover:bg-[var(--surface-hover)] rounded-lg text-[var(--text-secondary)] transition-all active:scale-90"
+              aria-label="Previous month"
             >
-              <ChevronLeft className="w-4 h-4 text-zinc-300" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setCurrentMonth(new Date())}
-              className="h-7 px-2 text-xs font-medium text-orange-400"
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                setCurrentMonth(now);
+                setSelectedDate(now);
+              }}
+              className="px-2 py-1 text-[10px] font-bold text-[var(--text-primary)] hover:bg-[var(--surface-hover)] rounded-lg transition-all"
             >
-              {t.today}
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              className="h-7 w-7"
+              {tTexts.todayEvents}
+            </button>
+            <button
+              onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
+              className="p-1.5 hover:bg-[var(--surface-hover)] rounded-lg text-[var(--text-secondary)] transition-all active:scale-90"
+              aria-label="Next month"
             >
-              <ChevronRight className="w-4 h-4 text-zinc-300" />
-            </Button>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Filter Toggle Pill Buttons */}
-        <div className="flex bg-zinc-950/60 border border-zinc-800 rounded-lg p-1 gap-1 mb-3">
+        {/* Days of Week Header */}
+        <div className="grid grid-cols-7 gap-1 text-center border-b border-[var(--border-subtle)] pb-2">
+          {(lang === 'ar'
+            ? ['إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت', 'أحد']
+            : lang === 'en'
+            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            : ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+          ).map((d, i) => (
+            <span key={i} className="text-[10px] font-bold text-[var(--text-muted)] py-1 uppercase">
+              {d}
+            </span>
+          ))}
+        </div>
+
+        {/* Calendar Days Grid */}
+        <div className="grid grid-cols-7 gap-1.5">
+          {calendarDays.map((day, idx) => {
+            const dateStr = normalizeDateKey(day);
+            const dayEntry = agendaByDate[dateStr];
+            const hasDebts = (dayEntry?.debts.length || 0) > 0;
+            const hasExpiring = (dayEntry?.expiring.length || 0) > 0;
+            const hasEvents = hasDebts || hasExpiring;
+
+            const isSelected = isSameDay(day, selectedDate);
+            const isCurrentMonthDay = isSameMonth(day, currentMonth);
+            const isCurrentToday = isToday(day);
+
+            return (
+              <button
+                key={idx}
+                type="button"
+                data-date={dateStr}
+                onClick={() => handleDayClick(day)}
+                className={`h-12 rounded-xl flex flex-col items-center justify-center relative transition-all active:scale-95 ${
+                  !isCurrentMonthDay
+                    ? 'text-[var(--text-muted)] opacity-25'
+                    : isSelected
+                    ? 'bg-[var(--primary-bg)] text-[var(--primary)] font-black border-2 border-[var(--primary)] shadow-md'
+                    : isCurrentToday
+                    ? 'bg-[var(--surface-hover)] text-[var(--text-primary)] font-bold border border-[var(--primary-border)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] border border-transparent'
+                }`}
+              >
+                <span className="text-xs font-mono">{format(day, 'd')}</span>
+
+                {/* Status Indicator Dots */}
+                {hasEvents && isCurrentMonthDay && (
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {hasDebts && (
+                      <span
+                        title={tTexts.legendDebt}
+                        className="w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-red-500/20 animate-pulse"
+                      />
+                    )}
+                    {hasExpiring && (
+                      <span
+                        title={tTexts.legendExpiry}
+                        className="w-1.5 h-1.5 rounded-full bg-orange-500"
+                      />
+                    )}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center justify-center gap-5 pt-3 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] font-medium">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-orange-500" />
+            <span>{tTexts.legendExpiry}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span>{tTexts.legendDebt}</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* 3. Real-Time Members List Filtered by Selected Date (Below Grid) */}
+      <Card className="bg-[var(--card)] border border-[var(--border)] p-4 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="w-4 h-4 text-[var(--primary)]" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+              {format(selectedDate, 'dd MMMM yyyy', { locale: dateLocale })}
+            </h4>
+          </div>
+
+          <Badge variant="outline" className="text-[10px] font-mono border-[var(--border)] font-bold">
+            {dayMembers.length} {tTexts.membersCount}
+          </Badge>
+        </div>
+
+        {/* Sub-Filter Pills */}
+        <div className="flex bg-[var(--surface)] border border-[var(--border)] rounded-xl p-1 gap-1">
           {[
-            { id: 'all', label: t.allReminders },
-            { id: 'expiring', label: t.expiries },
-            { id: 'unpaid', label: t.unpaidFilter }
+            { id: 'all', label: tTexts.filterAll },
+            { id: 'expiring', label: tTexts.filterExpiring },
+            { id: 'debts', label: tTexts.filterDebts }
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setFilterMode(item.id as CalendarFilterMode)}
-              className={`flex-1 py-1 rounded-md text-xs font-medium transition-colors ${
+              onClick={() => setFilterMode(item.id as any)}
+              className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
                 filterMode === item.id
-                  ? 'bg-orange-500 text-white shadow-sm font-semibold'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-[var(--primary)] text-white shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               {item.label}
@@ -145,150 +448,90 @@ export function InteractiveCalendar({
           ))}
         </div>
 
-        {/* Weekdays */}
-        <div className="grid grid-cols-7 gap-1 text-center mb-1">
-          {(lang === 'ar'
-            ? ['إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت', 'أحد']
-            : ['L', 'M', 'M', 'J', 'V', 'S', 'D']
-          ).map((d, i) => (
-            <span key={i} className="text-[11px] font-medium text-zinc-500 py-1">
-              {d}
-            </span>
-          ))}
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {calendarDays.map((day, idx) => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const dayExpiries = expiriesByDate[dateStr] || [];
-            const hasExpiries = dayExpiries.length > 0;
-            const hasUnpaid = dayExpiries.some((m) => !m.isPaid);
-            const isSelected = isSameDay(day, selectedDate);
-            const isCurrentMonth = isSameMonth(day, currentMonth);
-            const isCurrentToday = isToday(day);
-
-            return (
-              <button
-                key={idx}
-                onClick={() => handleDayClick(day)}
-                className={`h-10 rounded-lg flex flex-col items-center justify-center relative transition-colors ${
-                  !isCurrentMonth
-                    ? 'text-zinc-600 opacity-30'
-                    : isSelected
-                    ? 'bg-orange-500/20 text-orange-400 font-bold border border-orange-500/30'
-                    : isCurrentToday
-                    ? 'bg-zinc-800 text-white font-semibold'
-                    : 'text-zinc-300 hover:bg-zinc-800/50'
-                }`}
-              >
-                <span className="text-xs font-mono">{format(day, 'd')}</span>
-
-                {/* Status indicator dots */}
-                {hasExpiries && (
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
-                      hasUnpaid ? 'bg-red-500 ring-2 ring-red-500/20' : 'bg-orange-500'
-                    }`}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Subtle Legend */}
-        <div className="flex items-center justify-center gap-4 pt-3 mt-3 border-t border-zinc-800/80 text-[11px] text-zinc-400">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-orange-500" />
-            <span>{t.expiries}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span>{t.unpaidFilter}</span>
-          </div>
-        </div>
-      </Card>
-
-      {/* Day Inspection Sheet with Direct Call & WhatsApp Triggers */}
-      <Sheet
-        isOpen={isDaySheetOpen}
-        onClose={() => setIsDaySheetOpen(false)}
-        title={format(selectedDate, 'dd MMMM yyyy', { locale: dateLocale })}
-        description={`${dayMembers.length} ${t.concernedMembers}`}
-      >
-        <div className="space-y-2.5 py-2">
-          {dayMembers.length > 0 ? (
-            dayMembers.map((member) => {
-              const { status, daysRemaining } = getSubscriptionStatus(member);
+        {/* Members Cards List */}
+        {dayMembers.length > 0 ? (
+          <div className="space-y-2.5 pt-1">
+            {dayMembers.map((member) => {
+              const hasDebt = (member.amountDue || 0) > 0 || !member.isPaid;
               const formattedPhone = cleanPhone(member.phone);
-              const reminderMsg = typeof t?.whatsappReminderTemplate === 'function'
-                ? t.whatsappReminderTemplate(member.fullName, member.planName, daysRemaining, !member.isPaid)
-                : getWhatsAppReminder(lang, member.fullName, member.planName, daysRemaining, !member.isPaid);
+              const reminderMsg = getWhatsAppReminder(lang, member.fullName, member.planName, 0, hasDebt);
               const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(reminderMsg)}`;
               const telUrl = `tel:+${formattedPhone}`;
 
               return (
                 <div
                   key={member.id}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 space-y-2.5 text-xs"
+                  className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 space-y-2.5 text-xs shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-semibold text-zinc-100 text-sm">{member.fullName}</h4>
-                      <p className="text-zinc-400 text-[11px]">{member.planName} • {member.phone}</p>
+                      <div className="font-bold text-sm text-[var(--text-primary)]">{member.fullName}</div>
+                      <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                        {member.planName} • {member.phone}
+                      </div>
                     </div>
 
-                    <Badge variant={!member.isPaid ? 'destructive' : 'orange'}>
-                      {!member.isPaid ? `${t.unpaid}` : `${daysRemaining}${t.daysRemaining}`}
-                    </Badge>
+                    {hasDebt ? (
+                      <Badge variant="destructive" className="font-mono text-xs font-black">
+                        {tTexts.debtBadge(member.amountDue || 0)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="orange" className="font-mono text-xs font-bold">
+                        {tTexts.expiringBadge}
+                      </Badge>
+                    )}
                   </div>
 
-                  {/* 1-Click Action Triggers: Call, WhatsApp, Renew */}
-                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-zinc-800">
+                  {/* Actions: Call, WhatsApp, Settle / Renew */}
+                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
                     <a
                       href={telUrl}
-                      className="h-8 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-orange-400 flex items-center justify-center gap-1 font-semibold text-xs border border-zinc-700/60"
-                      title={t.call}
+                      className="h-8 rounded-lg bg-[var(--surface-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] active:scale-95"
                     >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>{t.call}</span>
+                      <Phone className="w-3.5 h-3.5 text-[var(--primary)]" />
+                      <span>{tTexts.callBtn}</span>
                     </a>
 
                     <a
                       href={waUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="h-8 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 flex items-center justify-center gap-1 font-semibold text-xs border border-emerald-500/20"
-                      title={t.whatsapp}
+                      className="h-8 rounded-lg bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--success-border)] active:scale-95"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
-                      <span>{t.whatsapp}</span>
+                      <span>{tTexts.waBtn}</span>
                     </a>
 
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={() => {
-                        onRenew(member);
-                        setIsDaySheetOpen(false);
-                      }}
-                      className="h-8 text-xs font-semibold gap-1"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>{t.renew}</span>
-                    </Button>
+                    {hasDebt ? (
+                      <Button
+                        size="sm"
+                        onClick={() => onSettleDebt(member)}
+                        className="h-8 text-xs font-bold bg-[var(--danger)] hover:opacity-90 text-white"
+                      >
+                        <Banknote className="w-3.5 h-3.5 mr-1" />
+                        <span>{tTexts.settleBtn}</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => onRenew(member)}
+                        className="h-8 text-xs font-bold bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)]"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                        <span>{tTexts.renewBtn}</span>
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
-            })
-          ) : (
-            <div className="text-center py-10 text-zinc-500 text-xs">
-              {t.noMembersExpiringDate}
-            </div>
-          )}
-        </div>
-      </Sheet>
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-[var(--text-muted)] text-xs border border-dashed border-[var(--border)] rounded-xl">
+            {tTexts.emptyNotice}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

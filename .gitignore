@@ -40,3 +40,6 @@ android/
 *.aab
 local.properties
 .gradle/
+
+# Sync cache
+club_sync_store.json

@@ -13,7 +13,9 @@ import { LionLogo } from './components/LionLogo';
 import { MemberCard } from './components/MemberCard';
 import { MobileMemberModal } from './components/MobileMemberModal';
 import { MobileRenewalModal } from './components/MobileRenewalModal';
+import { DebtSettlementModal } from './components/DebtSettlementModal';
 import { FinanceScreen } from './components/FinanceScreen';
+import { InteractiveCalendar } from './components/InteractiveCalendar';
 import { SettingsTab } from './components/SettingsTab';
 import { SplashScreen } from './components/SplashScreen';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -23,6 +25,7 @@ import {
   Filter,
   Plus,
   Users,
+  Calendar as CalendarIcon,
   PieChart,
   Settings,
   X
@@ -33,8 +36,8 @@ import { StatusBar } from '@capacitor/status-bar';
 
 export function App() {
   const [showSplash, setShowSplash] = useState(true);
-  // 3 Core Tabs: Membres, Finance, Réglages
-  const [activeTab, setActiveTab] = useState<'members' | 'finance' | 'settings'>('members');
+  // 4 Core Tabs: Membres, Calendrier, Finance, Réglages
+  const [activeTab, setActiveTab] = useState<'members' | 'calendar' | 'finance' | 'settings'>('members');
   const [lang, setLang] = useState<SupportedLanguage>('fr');
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
 
@@ -51,6 +54,8 @@ export function App() {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
   const [renewingMember, setRenewingMember] = useState<Member | null>(null);
+  const [memberForDebtSettlement, setMemberForDebtSettlement] = useState<Member | null>(null);
+  const [blockedRenewalMember, setBlockedRenewalMember] = useState<Member | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Toast System (Floating Top Notification - Exactly 3s)
@@ -119,54 +124,14 @@ export function App() {
     }
   };
 
-  // Debt Collection / Encaisser le Reste
-  const handleTogglePayment = async (member: Member) => {
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const remainingDebt = member.amountDue || 0;
-
-    if (remainingDebt > 0) {
-      // Collect remaining debt in cash
-      const newPayment: Payment = {
-        id: `PAY-${Date.now()}`,
-        subscriptionId: `SUB-${member.id}`,
-        memberId: member.id,
-        memberName: member.fullName,
-        amountPaid: remainingDebt,
-        paymentDate: todayStr,
-        paymentMethod: 'CASH',
-        timestamp: Date.now()
-      };
-
-      await db.payments.add(newPayment);
-      await syncEngine.enqueue('PAYMENT', newPayment);
-
-      const updated: Member = {
-        ...member,
-        isPaid: true,
-        amountDue: 0,
-        updatedAt: Date.now()
-      };
-      await db.members.put(updated);
-      await syncEngine.enqueue('UPDATE_MEMBER', updated);
-      await refreshData();
-      showToast(
-        t.paymentCollectedToast
-          ? t.paymentCollectedToast(remainingDebt, t.currency)
-          : `Encaissement de ${remainingDebt} ${t.currency} effectué avec succès !`,
-        'success'
-      );
-    } else {
-      // Toggle unpaid status
-      const updated: Member = {
-        ...member,
-        isPaid: !member.isPaid,
-        amountDue: !member.isPaid ? 0 : 250,
-        updatedAt: Date.now()
-      };
-      await db.members.put(updated);
-      await syncEngine.enqueue('UPDATE_MEMBER', updated);
-      await refreshData();
+  // Trigger Renewal with strict pre-check: Block if debt exists
+  const handleRequestRenewal = (member: Member) => {
+    const debt = member.amountDue || 0;
+    if (debt > 0 || !member.isPaid) {
+      setBlockedRenewalMember(member);
+      return;
     }
+    setRenewingMember(member);
   };
 
   // Soft Delete + Photo Purging (Storage Optimization & Ledger Integrity)
@@ -191,9 +156,7 @@ export function App() {
       await refreshData();
       setMemberToDelete(null);
       showToast(
-        t.memberArchivedToast
-          ? t.memberArchivedToast(member.fullName)
-          : `${member.fullName} a été archivé et sa photo purgée.`,
+        lang === 'ar' ? `تمت أرشفة ${member.fullName} وتفريغ المساحة.` : `${member.fullName} a été archivé et sa photo purgée.`,
         'warning'
       );
     } catch (err) {
@@ -232,46 +195,44 @@ export function App() {
     <>
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
 
-      <div className={`min-h-screen min-h-[100dvh] bg-[var(--background)] text-[var(--text-primary)] flex flex-col items-center select-none ${isRTL ? 'rtl' : 'ltr'}`}>
+      <div className={`min-h-screen bg-[#09090b] text-zinc-100 flex flex-col items-center select-none ${isRTL ? 'rtl' : 'ltr'}`}>
         {/* Mobile Shell Responsive Container */}
-        <div className="w-full max-w-lg min-h-screen min-h-[100dvh] bg-[var(--background)] sm:border-x sm:border-[var(--border)] flex flex-col relative pb-[calc(5rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] shadow-2xl">
+        <div className="w-full max-w-lg min-h-screen bg-[#09090b] sm:border-x sm:border-zinc-800/80 flex flex-col relative pb-20 shadow-2xl">
           {/* Top Header - Rendered ONLY on Membres Tab */}
           {activeTab === 'members' ? (
-            <header className="sticky top-0 z-40 bg-[var(--nav-bg)] backdrop-blur-md border-b border-[var(--border)] px-4 pt-safe pb-3 space-y-3">
+            <header className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-safe pb-3 space-y-3">
               {/* Minimalistic Brand Bar + Language Badge */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <LionLogo size={44} primaryColor="var(--primary)" />
+                  <LionLogo size={44} primaryColor={defaultTheme.colors.primary} />
                   <div>
-                    <h1 className="text-base font-black tracking-tight text-[var(--text-primary)] flex items-center gap-1 leading-none">
-                      CLUB <span className="text-[var(--primary)]">AL OUSSOUD</span>
+                    <h1 className="text-base font-black tracking-tight text-zinc-100 flex items-center gap-1 leading-none">
+                      CLUB <span className="text-orange-500">AL OUSSOUD</span>
                     </h1>
-                    <p className="text-[10px] text-[var(--text-secondary)] font-medium mt-1">
-                      {t.brandSubtitle}
+                    <p className="text-[10px] text-zinc-400 font-medium mt-1">
+                      {lang === 'ar' ? 'إدارة النادي والاستخلاص النقدي' : t.brandSubtitle}
                     </p>
                   </div>
                 </div>
 
-                <Badge variant="outline" className="text-[10px] uppercase font-bold text-[var(--text-muted)] border-[var(--border)]">
-                  {lang}
-                </Badge>
+                
               </div>
 
               {/* Search Bar + Filter Trigger */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder={t.searchPlaceholder}
+                    placeholder={lang === 'ar' ? 'بحث بالاسم أو الهاتف...' : t.searchPlaceholder}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full h-10 pl-9 rtl:pl-3 rtl:pr-9 pr-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] transition"
+                    className="w-full h-10 pl-9 rtl:pl-3 rtl:pr-9 pr-3 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-orange-500/80 transition"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -282,33 +243,35 @@ export function App() {
                   onClick={() => setIsFilterSheetOpen(true)}
                   className={`h-10 px-3 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition ${
                     filter !== 'all'
-                      ? 'border-[var(--primary-border)] bg-[var(--primary-bg)] text-[var(--primary)]'
-                      : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                      ? 'border-orange-500/80 bg-orange-500/10 text-orange-400'
+                      : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-850'
                   }`}
                 >
                   <Filter className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">
                     {filter === 'all'
-                      ? t.filterAll
+                      ? (lang === 'ar' ? 'الكل' : t.filterAll)
                       : filter === 'unpaid'
-                      ? t.filterUnpaid
+                      ? (lang === 'ar' ? 'الديون' : t.filterUnpaid)
                       : filter === 'expiring'
-                      ? t.filterExpiring
-                      : t.filterExpired}
+                      ? (lang === 'ar' ? 'تنتهي قريباً' : t.filterExpiring)
+                      : (lang === 'ar' ? 'منتهية' : t.filterExpired)}
                   </span>
                 </button>
               </div>
             </header>
           ) : (
             /* Clean Sub-Screen Header for other tabs */
-            <header className="sticky top-0 z-40 bg-[var(--nav-bg)] backdrop-blur-md border-b border-[var(--border)] px-4 pt-safe pb-3.5 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-tight">
-                {activeTab === 'finance' ? t.tabFinance : t.tabSettings}
+            <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-safe pb-3.5 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-zinc-100 tracking-tight">
+                {activeTab === 'calendar'
+                  ? (lang === 'ar' ? 'التقويم ومواعيد الانتهاء' : lang === 'en' ? 'Calendar & Expirations' : 'Calendrier & Échéances')
+                  : activeTab === 'finance'
+                  ? (lang === 'ar' ? 'المالية والمقبوضات' : t.tabFinance)
+                  : (lang === 'ar' ? 'الإعدادات والنسخ' : t.tabSettings)}
               </h2>
 
-              <Badge variant="outline" className="text-[10px] uppercase font-bold text-[var(--text-muted)] border-[var(--border)]">
-                {lang}
-              </Badge>
+              
             </header>
           )}
 
@@ -360,29 +323,29 @@ export function App() {
               <div className="space-y-4">
                 {/* 3 Clean Stat Badges / Cards */}
                 <div className="grid grid-cols-3 gap-2">
-                  <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center">
-                    <span className="text-[10px] text-[var(--text-secondary)] font-medium block truncate">
-                      {t.filterAll}
+                  <Card className="bg-zinc-900/50 border border-zinc-800/80 p-2.5 text-center">
+                    <span className="text-[10px] text-zinc-400 font-medium block truncate">
+                      {lang === 'ar' ? 'كل الأعضاء' : t.filterAll}
                     </span>
-                    <span className="text-base font-bold text-[var(--text-primary)] font-mono mt-0.5 block">
+                    <span className="text-base font-bold text-zinc-100 font-mono mt-0.5 block">
                       {counts.all}
                     </span>
                   </Card>
 
-                  <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center">
-                    <span className="text-[10px] text-[var(--primary)] font-medium block truncate">
-                      {t.filterExpiring} (7j)
+                  <Card className="bg-zinc-900/50 border border-zinc-800/80 p-2.5 text-center">
+                    <span className="text-[10px] text-orange-400 font-medium block truncate">
+                      {lang === 'ar' ? 'تنتهي قريباً (7j)' : `${t.filterExpiring} (7j)`}
                     </span>
-                    <span className="text-base font-bold text-[var(--primary)] font-mono mt-0.5 block">
+                    <span className="text-base font-bold text-orange-400 font-mono mt-0.5 block">
                       {counts.expiring}
                     </span>
                   </Card>
 
-                  <Card className="bg-[var(--card)] border border-[var(--border)] p-2.5 text-center">
-                    <span className="text-[10px] text-[var(--danger)] font-medium block truncate">
-                      {t.filterUnpaid}
+                  <Card className="bg-zinc-900/50 border border-zinc-800/80 p-2.5 text-center">
+                    <span className="text-[10px] text-red-400 font-medium block truncate">
+                      {lang === 'ar' ? 'الديون' : t.filterUnpaid}
                     </span>
-                    <span className="text-base font-bold text-[var(--danger)] font-mono mt-0.5 block">
+                    <span className="text-base font-bold text-red-400 font-mono mt-0.5 block">
                       {counts.unpaid}
                     </span>
                   </Card>
@@ -390,11 +353,11 @@ export function App() {
 
                 {/* Section Header with Count */}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                    {t.tabMembers} ({filteredMembers.length})
+                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                    {lang === 'ar' ? 'لائحة المشتركين' : t.tabMembers} ({filteredMembers.length})
                   </span>
-                  <span className="text-[11px] text-[var(--primary)] font-medium">
-                    {t.tapForDetails}
+                  <span className="text-[11px] text-orange-400 font-medium">
+                    {lang === 'ar' ? 'اضغط للتفاصيل' : t.tapForDetails}
                   </span>
                 </div>
 
@@ -406,8 +369,9 @@ export function App() {
                         key={member.id}
                         member={member}
                         plans={plans}
-                        onRenew={(m) => setRenewingMember(m)}
-                        onTogglePaymentStatus={handleTogglePayment}
+                        onRenew={handleRequestRenewal}
+                        onSettleDebt={(m) => setMemberForDebtSettlement(m)}
+                        onBlockedRenewal={(m) => setBlockedRenewalMember(m)}
                         onDeleteMember={handleDeleteMember}
                         onEditMember={(m) => {
                           setEditingMember(m);
@@ -417,25 +381,38 @@ export function App() {
                       />
                     ))
                   ) : (
-                    <div className="text-center py-16 rounded-xl border border-[var(--border)] bg-[var(--card-subtle)] p-6 text-[var(--text-muted)] text-xs">
-                      {t.noMembersFound}
+                    <div className="text-center py-16 rounded-xl border border-zinc-800 bg-zinc-900/30 p-6 text-zinc-500 text-xs">
+                      {lang === 'ar' ? 'لم يتم العثور على أي مشترك.' : t.noMembersFound}
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* SCREEN 2: FINANCE & STATS */}
-            {activeTab === 'finance' && (
-              <FinanceScreen
-                payments={payments}
+            {/* SCREEN 2: CALENDRIER & AGENDA (100% REAL-TIME & REACTIVE) */}
+            {activeTab === 'calendar' && (
+              <InteractiveCalendar
                 members={members}
-                onTogglePayment={handleTogglePayment}
+                plans={plans}
+                onRenew={handleRequestRenewal}
+                onSettleDebt={(m) => setMemberForDebtSettlement(m)}
+                onBlockedRenewal={(m) => setBlockedRenewalMember(m)}
                 lang={lang}
               />
             )}
 
-            {/* SCREEN 3: RÉGLAGES */}
+            {/* SCREEN 3: FINANCE & STATS */}
+            {activeTab === 'finance' && (
+              <FinanceScreen
+                payments={payments}
+                members={members}
+                onTogglePayment={(m) => setMemberForDebtSettlement(m)}
+                onSettleDebt={(m) => setMemberForDebtSettlement(m)}
+                lang={lang}
+              />
+            )}
+
+            {/* SCREEN 4: RÉGLAGES */}
             {activeTab === 'settings' && (
               <SettingsTab
                 plans={plans}
@@ -448,103 +425,71 @@ export function App() {
             )}
           </main>
 
-          {/* Floating Action Button for Adding Members */}
+          {/* Floating Action Button for Adding Members (Personal Info only) */}
           {activeTab === 'members' && (
             <button
               onClick={() => {
                 setEditingMember(null);
                 setShowAddModal(true);
               }}
-              className="fixed bottom-[calc(4.25rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] right-4 rtl:right-auto rtl:left-4 sm:right-[calc(50%-15rem)] sm:rtl:right-auto sm:rtl:left-[calc(50%-15rem)] z-40 w-12 h-12 rounded-full shadow-[0_8px_24px_var(--primary-border)] flex items-center justify-center text-[var(--primary-foreground)] font-black bg-[var(--primary)] hover:bg-[var(--primary-hover)] transition-all active:scale-90 hover:scale-105"
-              title={t.addNewMember}
+              className="fixed bottom-20 right-4 sm:right-[calc(50%-15rem)] z-40 w-13 h-13 rounded-full shadow-xl flex items-center justify-center text-white font-black bg-orange-500 hover:bg-orange-600 transition-transform active:scale-95 hover:scale-105"
+              title={lang === 'ar' ? 'إضافة عضو جديد' : t.addNewMember}
             >
               <Plus className="w-6 h-6" />
             </button>
           )}
 
-          {/* Modern Sleek Minimalist Bottom Navigation Bar */}
-          <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--nav-bg)] backdrop-blur-xl border-t border-[var(--nav-border)] max-w-lg mx-auto px-4 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom,0px))] flex items-center justify-around">
+          {/* 4 Core Bottom Navigation Tabs: Membres, Calendrier, Finance, Réglages */}
+          <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 py-2.5 px-3 flex justify-around max-w-lg mx-auto">
             <button
               onClick={() => setActiveTab('members')}
-              className="group flex flex-col items-center justify-center py-1 px-3 transition-colors duration-200 active:scale-95 flex-1 relative"
+              className={`flex flex-col items-center gap-1 text-[10px] font-medium transition flex-1 ${
+                activeTab === 'members' ? 'text-orange-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div
-                className={`transition-all duration-200 ${
-                  activeTab === 'members'
-                    ? 'text-[var(--primary)] filter drop-shadow-[0_0_8px_var(--nav-glow)]'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-              </div>
-              <span
-                className={`text-[10px] mt-1 font-medium transition-colors duration-200 truncate ${
-                  activeTab === 'members'
-                    ? 'text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                {t.tabMembers}
-              </span>
+              <Users className="w-4 h-4" />
+              <span className="truncate">{lang === 'ar' ? 'المشتركون' : lang === 'en' ? 'Members' : t.tabMembers}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`flex flex-col items-center gap-1 text-[10px] font-medium transition flex-1 ${
+                activeTab === 'calendar' ? 'text-orange-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              <span className="truncate">{lang === 'ar' ? 'التقويم' : lang === 'en' ? 'Calendar' : 'Calendrier'}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('finance')}
-              className="group flex flex-col items-center justify-center py-1 px-3 transition-colors duration-200 active:scale-95 flex-1 relative"
+              className={`flex flex-col items-center gap-1 text-[10px] font-medium transition flex-1 ${
+                activeTab === 'finance' ? 'text-orange-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div
-                className={`transition-all duration-200 ${
-                  activeTab === 'finance'
-                    ? 'text-[var(--primary)] filter drop-shadow-[0_0_8px_var(--nav-glow)]'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                <PieChart className="w-5 h-5" />
-              </div>
-              <span
-                className={`text-[10px] mt-1 font-medium transition-colors duration-200 truncate ${
-                  activeTab === 'finance'
-                    ? 'text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                {t.tabFinance}
-              </span>
+              <PieChart className="w-4 h-4" />
+              <span className="truncate">{lang === 'ar' ? 'المالية' : lang === 'en' ? 'Finance' : t.tabFinance}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('settings')}
-              className="group flex flex-col items-center justify-center py-1 px-3 transition-colors duration-200 active:scale-95 flex-1 relative"
+              className={`flex flex-col items-center gap-1 text-[10px] font-medium transition flex-1 ${
+                activeTab === 'settings' ? 'text-orange-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div
-                className={`transition-all duration-200 ${
-                  activeTab === 'settings'
-                    ? 'text-[var(--primary)] filter drop-shadow-[0_0_8px_var(--nav-glow)]'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                <Settings className="w-5 h-5" />
-              </div>
-              <span
-                className={`text-[10px] mt-1 font-medium transition-colors duration-200 truncate ${
-                  activeTab === 'settings'
-                    ? 'text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                {t.tabSettings}
-              </span>
+              <Settings className="w-4 h-4" />
+              <span className="truncate">{lang === 'ar' ? 'الإعدادات' : lang === 'en' ? 'Settings' : t.tabSettings}</span>
             </button>
           </nav>
 
           {/* Filter Bottom Sheet */}
-          <Sheet isOpen={isFilterSheetOpen} onClose={() => setIsFilterSheetOpen(false)} title={t.filterLabel}>
+          <Sheet isOpen={isFilterSheetOpen} onClose={() => setIsFilterSheetOpen(false)} title={lang === 'ar' ? 'تصفية حسب الحالة' : t.filterLabel}>
             <div className="space-y-2 py-2">
               {[
-                { key: 'all', label: t.filterAll, count: counts.all },
-                { key: 'unpaid', label: t.filterUnpaid, count: counts.unpaid },
-                { key: 'expiring', label: t.filterExpiring, count: counts.expiring },
-                { key: 'expired', label: t.filterExpired, count: counts.expired }
+                { key: 'all', label: lang === 'ar' ? 'كل المشتركين' : t.filterAll, count: counts.all },
+                { key: 'unpaid', label: lang === 'ar' ? 'ديون غير مسددة' : t.filterUnpaid, count: counts.unpaid },
+                { key: 'expiring', label: lang === 'ar' ? 'تنتهي قريباً (7 أيام)' : t.filterExpiring, count: counts.expiring },
+                { key: 'expired', label: lang === 'ar' ? 'اشتراكات منتهية' : t.filterExpired, count: counts.expired }
               ].map((item) => (
                 <button
                   key={item.key}
@@ -554,8 +499,8 @@ export function App() {
                   }}
                   className={`w-full p-3 rounded-xl border text-left rtl:text-right text-xs flex items-center justify-between transition-colors ${
                     filter === item.key
-                      ? 'border-[var(--primary-border)] bg-[var(--primary-bg)] text-[var(--primary)] font-semibold'
-                      : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                      ? 'border-orange-500 bg-orange-500/10 text-orange-400 font-semibold'
+                      : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-750'
                   }`}
                 >
                   <span>{item.label}</span>
@@ -567,9 +512,8 @@ export function App() {
             </div>
           </Sheet>
 
-          {/* Add / Edit Member Modal */}
+          {/* Add / Edit Member Modal (Decoupled personal info only) */}
           <MobileMemberModal
-            plans={plans}
             isOpen={showAddModal}
             memberToEdit={editingMember}
             onClose={() => {
@@ -579,7 +523,9 @@ export function App() {
             onMemberCreated={() => {
               refreshData();
               showToast(
-                editingMember ? t.memberUpdatedToast : t.memberSavedToast,
+                editingMember
+                  ? (lang === 'ar' ? 'تم تحديث بيانات العضو!' : lang === 'en' ? 'Member profile updated!' : 'Fiche membre mise à jour !')
+                  : (lang === 'ar' ? 'تم تسجيل العضو بنجاح!' : lang === 'en' ? 'New member registered!' : 'Nouveau membre enregistré !'),
                 'success'
               );
               setEditingMember(null);
@@ -587,28 +533,78 @@ export function App() {
             lang={lang}
           />
 
-          {/* Renewal Modal */}
+          {/* Renewal Modal (Handles variable cash payments, non-overlapping date extension) */}
           {renewingMember && (
             <MobileRenewalModal
               member={renewingMember}
               plans={plans}
               isOpen={!!renewingMember}
               onClose={() => setRenewingMember(null)}
+              onOpenDebtSettlement={(m) => setMemberForDebtSettlement(m)}
               onRenewSuccess={() => {
                 refreshData();
-                showToast(t.memberRenewedToast, 'success');
+                showToast(
+                  lang === 'ar' ? 'تم تجديد الاشتراك واستلام المبلغ!' : lang === 'en' ? 'Subscription renewed & payment collected!' : 'Abonnement prolongé avec succès !',
+                  'success'
+                );
               }}
               lang={lang}
             />
           )}
 
+          {/* Dedicated Debt Settlement Modal (Encaisser le Reste) */}
+          {memberForDebtSettlement && (
+            <DebtSettlementModal
+              member={memberForDebtSettlement}
+              isOpen={!!memberForDebtSettlement}
+              onClose={() => setMemberForDebtSettlement(null)}
+              onSettledSuccess={(updated, paidAmount) => {
+                refreshData();
+                showToast(
+                  lang === 'ar'
+                    ? `تم استخلاص ${paidAmount} DH نقداً بنجاح!`
+                    : `Encaissement de ${paidAmount} DH enregistré !`,
+                  'success'
+                );
+              }}
+              lang={lang}
+            />
+          )}
+
+          {/* Blocked Renewal Warning Modal (When member has active debt) */}
+          <ConfirmDialog
+            isOpen={!!blockedRenewalMember}
+            title={lang === 'ar' ? 'تنبيه: دين سابق معلق' : 'Attention: Dette en cours'}
+            description={
+              lang === 'ar'
+                ? `يجب استخلاص الدين السابق أولاً (${blockedRenewalMember?.amountDue || 0} DH) قبل تجديد الاشتراك.`
+                : `Veuillez d'abord régler la dette précédente (${blockedRenewalMember?.amountDue || 0} DH) avant de renouveler.`
+            }
+            confirmLabel={lang === 'ar' ? 'استخلاص الدين الآن' : lang === 'en' ? 'Settle Debt Now' : 'Régler la dette'}
+            cancelLabel={lang === 'ar' ? 'إلغاء' : lang === 'en' ? 'Cancel' : 'Annuler'}
+            variant="warning"
+            lang={lang}
+            onConfirm={() => {
+              const target = blockedRenewalMember;
+              setBlockedRenewalMember(null);
+              if (target) {
+                setMemberForDebtSettlement(target);
+              }
+            }}
+            onCancel={() => setBlockedRenewalMember(null)}
+          />
+
           {/* Reusable ConfirmDialog for Member Deletion (Soft Delete & Photo Purge) */}
           <ConfirmDialog
             isOpen={!!memberToDelete}
-            title={t.deleteMemberModalTitle}
-            description={memberToDelete ? t.deleteMemberModalDesc(memberToDelete.fullName) : ''}
-            confirmLabel={t.confirmArchiveBtn}
-            cancelLabel={t.cancelBtn}
+            title={lang === 'ar' ? 'أرشفة العضو وحذف صورته؟' : lang === 'en' ? 'Archive member and delete photo?' : 'Archiver et supprimer la photo ?'}
+            description={
+              lang === 'ar'
+                ? `سيتم نقل ${memberToDelete?.fullName} للأرشيف وحذف صورته فوراً لتوفير مساحة الهاتف مع الحفاظ التام على السجل المالي.`
+                : `Cette action retirera ${memberToDelete?.fullName} de la liste active et supprimera immédiatement sa photo pour libérer l'espace de stockage, tout en préservant l'historique financier.`
+            }
+            confirmLabel={lang === 'ar' ? 'أرشفة ومسح الصورة' : lang === 'en' ? 'Archive & Purge' : 'Archiver & Nettoyer'}
+            cancelLabel={lang === 'ar' ? 'إلغاء' : 'Annuler'}
             variant="danger"
             lang={lang}
             onConfirm={() => {

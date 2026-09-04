@@ -49,7 +49,7 @@ export function exportMemberExpiryToCalendar(member: Member, gymName: string = '
  */
 export async function requestAndSendLocalNotification(title: string, body: string): Promise<boolean> {
   if (!('Notification' in window)) {
-    alert(`${title}\n${body}`);
+    console.warn(`${title}\n${body}`);
     return false;
   }
 
@@ -67,12 +67,12 @@ export async function requestAndSendLocalNotification(title: string, body: strin
       });
       return true;
     } else {
-      alert(`${title}\n${body}`);
+      console.warn(`${title}\n${body}`);
       return false;
     }
   } catch (err) {
     console.warn('Native notification error:', err);
-    alert(`${title}\n${body}`);
+    console.warn(`${title}\n${body}`);
     return false;
   }
 }
