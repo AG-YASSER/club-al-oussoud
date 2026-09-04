@@ -17,7 +17,7 @@ export async function exportHtmlToPrintAndPdf(options: PrintAndPdfOptions): Prom
   if (Capacitor.isNativePlatform()) {
     try {
       // Calls Android native PrintManager -> opens system "Enregistrer au format PDF" / Print dialog directly!
-      await LocalSyncServer.printHtml({
+      await (LocalSyncServer as any).printHtml({
         html,
         title: sanitizedTitle
       });

@@ -60,7 +60,6 @@ export async function generateOfflineSyncPayload(): Promise<{ raw: string; compr
         e: m.expiryDate,
         pd: m.isPaid,
         ad: m.amountDue || 0,
-        cb: m.creditBalance || 0,
         del: m.isDeleted,
         nt: m.notes || '',
         u: m.updatedAt || Date.now()
@@ -96,29 +95,7 @@ export async function applyOfflineSyncPayload(
       jsonStr = decompressed;
     }
 
-    const parsed: any = JSON.parse(jsonStr);
-
-    // Support standard full JSON backup file if provided
-    if (parsed.data && Array.isArray(parsed.data.members)) {
-      const count = parsed.data.members.length;
-      await db.transaction('rw', db.members, db.plans, db.subscriptions, db.payments, async () => {
-        if (parsed.data.plans?.length > 0) await db.plans.bulkPut(parsed.data.plans);
-        if (parsed.data.members?.length > 0) {
-          const normalized = parsed.data.members.map((m: any) => ({
-            ...m,
-            amountDue: m.amountDue ?? 0,
-            creditBalance: m.creditBalance ?? 0,
-            isPaid: m.isPaid !== false && !(m.amountDue && m.amountDue > 0)
-          }));
-          await db.members.bulkPut(normalized);
-        }
-        if (parsed.data.subscriptions?.length > 0) await db.subscriptions.bulkPut(parsed.data.subscriptions);
-        if (parsed.data.payments?.length > 0) await db.payments.bulkPut(parsed.data.payments);
-      });
-      return { success: true, message: 'تم استيراد ' + count + ' عضو بنجاح من ملف النسخة الاحتياطية!', count };
-    }
-
-    const payload: OfflineSyncPayload = parsed;
+    const payload: OfflineSyncPayload = JSON.parse(jsonStr);
     if (payload.app !== 'CAO_SYNC' || !payload.d) {
       return { success: false, message: 'صيغة كود المزامنة غير صالحة', count: 0 };
     }
@@ -143,7 +120,6 @@ export async function applyOfflineSyncPayload(
             const existing = existingMap.get(item.id);
             membersToPut.push({
               ...item,
-              creditBalance: item.creditBalance !== undefined ? item.creditBalance : (item.cb !== undefined ? item.cb : (existing?.creditBalance || 0)),
               photo: existing?.photo || item.photo || null,
               updatedAt: Math.max(item.updatedAt || Date.now(), existing?.updatedAt || 0)
             });
@@ -164,7 +140,6 @@ export async function applyOfflineSyncPayload(
               expiryDate: item.e,
               isPaid: item.pd !== false,
               amountDue: item.ad || 0,
-              creditBalance: item.cb !== undefined ? item.cb : (existing?.creditBalance || 0),
               notes: item.nt || existing?.notes || '',
               isDeleted: Boolean(item.del),
               deletedAt: item.del ? (existing?.deletedAt || new Date().toISOString().split('T')[0]) : undefined,
@@ -291,12 +266,6 @@ export async function pushToLocalIp(
   if (!url) {
     return { success: false, message: 'يرجى إدخال عنوان IP صالح (مثال: 192.168.1.50:8080)' };
   }
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
-    return {
-      success: false,
-      message: 'على موقع الويب (HTTPS)، يمنع المتصفح الاتصال المباشر عبر HTTP العادي. استخدم مزامنة الرمز QR أو مشاركة الملف.'
-    };
-  }
 
   try {
     const { compressed } = await generateOfflineSyncPayload();
@@ -339,13 +308,6 @@ export async function pullFromLocalIp(
   if (!url) {
     return { success: false, message: 'يرجى إدخال عنوان IP صالح (مثال: 192.168.1.50:8080)', count: 0 };
   }
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
-    return {
-      success: false,
-      message: 'على موقع الويب (HTTPS)، يمنع المتصفح الاتصال المباشر عبر HTTP العادي. استخدم مسح رمز QR بالكاميرا أو مشاركة الملف.',
-      count: 0
-    };
-  }
 
   try {
     const controller = new AbortController();
@@ -387,13 +349,6 @@ export async function pingLocalIp(
   const url = normalizeLocalIp(targetIp);
   if (!url) {
     return { success: false, message: 'يرجى كتابة عنوان IP صالح', latencyMs: 0 };
-  }
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
-    return {
-      success: false,
-      message: 'غير متاح عبر HTTP في بيئة HTTPS',
-      latencyMs: 0
-    };
   }
 
   const start = Date.now();
