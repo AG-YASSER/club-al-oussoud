@@ -200,8 +200,19 @@ export function SettingsTab({
   const handleToggleNetServer = async () => {
     if (isNetServerActive) {
       await sameNetworkSync.stopServer();
+      if (onShowToast) {
+        onShowToast(lang === 'ar' ? 'تم إيقاف الخادم' : 'Serveur arrêté', 'warning');
+      }
     } else {
       await sameNetworkSync.startServer();
+      if (onShowToast) {
+        onShowToast(
+          lang === 'ar'
+            ? 'الخادم نشط ويبث الآن في الشبكة!'
+            : 'Serveur actif et diffuse sur le réseau !',
+          'success'
+        );
+      }
     }
   };
 
@@ -209,12 +220,21 @@ export function SettingsTab({
     const res = await sameNetworkSync.pullDataFromSameNetwork();
     if (res.success) {
       onPlansUpdated();
-      setBackupStatus(
+      const msg = lang === 'ar'
+        ? `تم بنجاح! تم استلام وتحديث ${res.count} عضو`
+        : `Succès ! ${res.count} membres mis à jour`;
+      if (onShowToast) {
+        onShowToast(msg, 'success');
+      }
+    } else {
+      const errMsg = res.message || (
         lang === 'ar'
-          ? `تم استلام وتحديث ${res.count} عضو بنجاح!`
-          : `Données mises à jour (${res.count} membres) !`
+          ? 'فشل في الاتصال أو لم يتم العثور على خادم في الشبكة'
+          : 'Échec de connexion ou aucun serveur trouvé'
       );
-      setTimeout(() => setBackupStatus(null), 4000);
+      if (onShowToast) {
+        onShowToast(errMsg, 'expired');
+      }
     }
   };
 
@@ -939,14 +959,14 @@ export function SettingsTab({
     ]);
     setShowClearDbModal(false);
     onPlansUpdated();
-    setBackupStatus(
-      lang === 'ar'
-        ? 'تم تصفير قاعدة البيانات بنجاح!'
-        : lang === 'en'
-        ? 'Database reset to zero successfully!'
-        : 'Base réinitialisée avec succès !'
-    );
-    setTimeout(() => setBackupStatus(null), 4000);
+    const wipeMsg = lang === 'ar'
+      ? 'تم تصفير قاعدة البيانات بنجاح!'
+      : lang === 'en'
+      ? 'Database reset to zero successfully!'
+      : 'Base réinitialisée avec succès !';
+    if (onShowToast) {
+      onShowToast(wipeMsg, 'success');
+    }
   };
 
   // Localized texts
@@ -1286,12 +1306,7 @@ export function SettingsTab({
         </Button>
       </Card>
 
-      {/* Notification Banner for Backup / Sync status */}
-      {backupStatus && (
-        <div className="p-3 rounded-xl border border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)] text-xs font-bold text-center animate-in fade-in duration-200">
-          {backupStatus}
-        </div>
-      )}
+      
 
       {/* App Language Selection Modal */}
       {showLangModal && (

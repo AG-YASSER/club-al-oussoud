@@ -277,7 +277,7 @@ export function App() {
 
           {/* Floating Toast / Tooltip Outside Layout (High Visibility, Top Z-Index, 3s Auto-dismiss) */}
           {toastMessage && (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[92%] max-w-sm pointer-events-auto transition-all duration-300 ease-out animate-in fade-in slide-in-from-top-5">
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[92%] max-w-sm pointer-events-auto transition-all duration-300 ease-out animate-in fade-in slide-in-from-top-5">
               <div
                 className={`px-4 py-3 rounded-2xl border flex items-center justify-between shadow-[0_12px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl ${
                   toastMessage.type === 'success'
