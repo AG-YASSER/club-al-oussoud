@@ -1,3 +1,14 @@
+function getSyncApiUrl(extra: string = ''): string {
+  // If testing on localhost/127.0.0.1, talk to the live Vercel cloud relay so it syncs with phones on Vercel
+  const isLocal = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.')
+  );
+  const base = isLocal ? 'https://club-al-oussoud.vercel.app' : '';
+  return base + '/api/network-sync' + extra;
+}
+
 import {
   generateOfflineSyncPayload,
   applyOfflineSyncPayload
@@ -45,7 +56,7 @@ class SameNetworkSyncEngine {
       const { compressed, count } = await generateOfflineSyncPayload();
 
       // Publish to same-network room
-      const res = await fetch('/api/network-sync', {
+      const res = await fetch(getSyncApiUrl(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,7 +84,7 @@ class SameNetworkSyncEngine {
       this.keepAliveInterval = setInterval(async () => {
         if (!this.isServerActive) return;
         try {
-          await fetch('/api/network-sync', {
+          await fetch(getSyncApiUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -104,7 +115,7 @@ class SameNetworkSyncEngine {
     }
     this.isServerActive = false;
     try {
-      await fetch('/api/network-sync', {
+      await fetch(getSyncApiUrl(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' })
@@ -124,7 +135,7 @@ class SameNetworkSyncEngine {
       this.setStatus('pulling', lang === 'fr' ? 'Connexion et téléchargement...' : lang === 'en' ? 'Connecting and syncing...' : 'جارٍ فحص الشبكة وسحب البيانات...');
 
       // 1-Click check with cache buster
-      const res = await fetch(`/api/network-sync?t=${Date.now()}`, {
+      const res = await fetch(getSyncApiUrl(`?t=${Date.now()}`), {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
       });
