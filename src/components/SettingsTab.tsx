@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { LocalSyncServer } from '../plugins/localSyncServer';
+import { sameNetworkSync, NetworkServerStatus } from '../utils/sameNetworkSync';
 import { SupportedLanguage } from '../utils/i18n';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -127,6 +128,11 @@ export function SettingsTab({
   } | null>(null);
   const [isFileImporting, setIsFileImporting] = useState(false);
 
+  // Same-Network Instant Sync States (No code, No IP, 1-Click)
+  const [networkSyncStatus, setNetworkSyncStatus] = useState<NetworkServerStatus>('idle');
+  const [networkSyncMsg, setNetworkSyncMsg] = useState<string>('');
+  const [isNetServerActive, setIsNetServerActive] = useState<boolean>(false);
+
   // Deterministic QR Pairing States
   const [pairingToken, setPairingToken] = useState<string>('');
   const [pairingQrPayload, setPairingQrPayload] = useState<string>('');
@@ -181,6 +187,36 @@ export function SettingsTab({
     });
     return () => { unsub(); };
   }, [lang, onPlansUpdated]);
+
+  useEffect(() => {
+    const unsub = sameNetworkSync.onStatusChange((status, msg) => {
+      setNetworkSyncStatus(status);
+      setNetworkSyncMsg(msg);
+      setIsNetServerActive(sameNetworkSync.getIsServerActive());
+    });
+    return () => { unsub(); };
+  }, []);
+
+  const handleToggleNetServer = async () => {
+    if (isNetServerActive) {
+      await sameNetworkSync.stopServer();
+    } else {
+      await sameNetworkSync.startServer();
+    }
+  };
+
+  const handlePullFromNetwork = async () => {
+    const res = await sameNetworkSync.pullDataFromSameNetwork();
+    if (res.success) {
+      onPlansUpdated();
+      setBackupStatus(
+        lang === 'ar'
+          ? `تم استلام وتحديث ${res.count} عضو بنجاح!`
+          : `Données mises à jour (${res.count} membres) !`
+      );
+      setTimeout(() => setBackupStatus(null), 4000);
+    }
+  };
 
   // Cleanup camera scanner on unmount or tab switch
   const stopCameraScanner = async () => {
@@ -1474,7 +1510,7 @@ export function SettingsTab({
           {syncTab === 'wifi' && (
             <div className="space-y-4 animate-in fade-in duration-150">
 
-              {/* CARD 1: HOST / SERVER (Broadcaster) */}
+              {/* CARD 1: HOST / BROADCASTER */}
               <div className="p-4 rounded-2xl border border-[var(--primary-border)] bg-[var(--card)] space-y-3 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -1483,85 +1519,66 @@ export function SettingsTab({
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
-                        {lang === 'ar' ? '1. الهاتف المضيف (مشاركة البيانات)' : '1. Téléphone Hôte (Partage)'}
+                        {lang === 'ar' ? '1. الهاتف الأول (مشاركة البيانات)' : '1. PREMIER TÉLÉPHONE (PARTAGE)'}
                       </h4>
                       <p className="text-[10px] text-[var(--text-muted)]">
-                        {lang === 'ar' ? 'تشغيل الخادم المحلي وبث البيانات للأجهزة المتصلة' : 'Démarrer le serveur local pour transmettre les données'}
+                        {lang === 'ar' ? 'تشغيل الخادم لبث المشتركين لكافة أجهزة نفس الشبكة' : 'Activer le serveur pour transmettre les données'}
                       </p>
                     </div>
                   </div>
 
                   <span className={`px-2.5 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 border transition-all ${
-                    isServerRunning
+                    isNetServerActive
                       ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]'
                       : 'bg-[var(--surface)] text-[var(--text-muted)] border-[var(--border)]'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${
-                      isServerRunning ? 'bg-[var(--success)] animate-ping' : 'bg-zinc-500'
+                      isNetServerActive ? 'bg-[var(--success)] animate-ping' : 'bg-zinc-500'
                     }`} />
                     <span>
-                      {isServerRunning
-                        ? (lang === 'ar' ? 'الخادم نشط' : 'Serveur Actif')
+                      {isNetServerActive
+                        ? (lang === 'ar' ? 'الخادم نشط' : 'Actif')
                         : (lang === 'ar' ? 'متوقف' : 'Inactif')}
                     </span>
                   </span>
                 </div>
 
-                {!isServerRunning ? (
-                  <Button
-                    size="sm"
-                    onClick={handleToggleServer}
-                    className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
-                  >
-                    <Server className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'بدء المشاركة وتشغيل الخادم' : 'Démarrer le partage et le serveur'}</span>
-                  </Button>
-                ) : (
-                  <div className="space-y-3 pt-1 animate-in fade-in">
-                    {/* Clean QR code display (Contains only real Wi-Fi IP) */}
-                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-white text-zinc-950 border border-[var(--border)] shadow-sm space-y-2">
-                      <QRCodeSVG
-                        value={pairingQrPayload || 'http://127.0.0.1:8080'}
-                        size={170}
-                        level="M"
-                        includeMargin={true}
-                        className="rounded-lg"
-                      />
-                      {serverIps.length > 0 && (
-                        <div className="text-center">
-                          <span className="text-xs font-black font-mono text-zinc-900 block">
-                            http://{serverIps[0]}:{serverPort || 8080}
-                          </span>
-                          <span className="text-[10px] text-zinc-500 block font-medium">
-                            {lang === 'ar' ? 'عنوان الهاتف في شبكة Wi-Fi' : 'Adresse Wi-Fi locale'}
-                          </span>
-                        </div>
+                <div className="pt-1">
+                  {!isNetServerActive ? (
+                    <Button
+                      size="sm"
+                      onClick={handleToggleNetServer}
+                      disabled={networkSyncStatus === 'starting'}
+                      className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
+                    >
+                      {networkSyncStatus === 'starting' ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      ) : (
+                        <Wifi className="w-4 h-4" />
                       )}
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 text-[var(--primary)] animate-spin" />
-                        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                          {lang === 'ar' ? 'الخادم نشط - في انتظار الهاتف الثاني...' : 'Serveur actif - En attente du 2ème appareil...'}
-                        </span>
+                      <span>{lang === 'ar' ? 'بدء المشاركة وتشغيل الخادم' : 'Démarrer le partage et le serveur'}</span>
+                    </Button>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div className="p-3 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] text-[11px] text-[var(--success)] font-bold text-center leading-relaxed">
+                        {lang === 'ar'
+                          ? 'الخادم نشط ويبث الآن! في الهاتف الثاني اضغط على (سحب البيانات).'
+                          : 'Serveur actif ! Sur le 2ème téléphone, appuyez sur (Télécharger les données).'}
                       </div>
-
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={handleToggleServer}
-                        className="h-8 text-[11px] font-bold border-[var(--danger-border)] text-[var(--danger)] hover:bg-red-500/10"
+                        onClick={handleToggleNetServer}
+                        className="w-full h-9 text-xs font-bold rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white border border-[var(--danger-border)] flex items-center justify-center gap-1.5 transition-all active:scale-98"
                       >
-                        <X className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'إيقاف' : 'Arrêter'}</span>
+                        <X className="w-4 h-4" />
+                        <span>{lang === 'ar' ? 'إيقاف الخادم' : 'Arrêter le serveur'}</span>
                       </Button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
-              {/* CARD 2: CLIENT / RECEIVER (Instant 1-Hit Sync) */}
+              {/* CARD 2: RECEIVER / PULL */}
               <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] space-y-3 shadow-sm">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--primary)]">
@@ -1569,116 +1586,34 @@ export function SettingsTab({
                   </div>
                   <div>
                     <h4 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wide">
-                      {lang === 'ar' ? '2. الهاتف المستلم (سحب البيانات)' : '2. Téléphone Récepteur (Synchronisation)'}
+                      {lang === 'ar' ? '2. الهاتف الثاني (استلام البيانات)' : '2. DEUXIÈME TÉLÉPHONE (RÉCEPTION)'}
                     </h4>
                     <p className="text-[10px] text-[var(--text-muted)]">
-                      {lang === 'ar' ? 'الاتصال المباشر بالهاتف المضيف وتحديث المشتركين فوراً' : 'Connexion directe et mise à jour immédiate'}
+                      {lang === 'ar' ? 'التعرف التلقائي وسحب المشتركين بنقرة واحدة' : 'Recherche automatique et mise à jour en 1 clic'}
                     </p>
                   </div>
                 </div>
 
-                {/* Inline Status Callout */}
-                {scannerStep !== 'idle' && (scannerStep as any) !== 'complete' && (
-                  <div className={`p-3 rounded-xl border text-xs font-bold text-center space-y-1 animate-in fade-in ${
-                    scannerStep === 'complete'
-                      ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]'
-                      : scannerStep === 'error'
-                      ? 'bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-border)]'
-                      : 'bg-[var(--primary-bg)] text-[var(--primary)] border-[var(--primary-border)]'
-                  }`}>
-                    <div className="flex items-center justify-center gap-2">
-                      {scannerStep === 'complete' ? (
-                        <CheckCircle2 className="w-4 h-4 text-[var(--success)]" />
-                      ) : scannerStep === 'error' ? (
-                        <X className="w-4 h-4 text-[var(--danger)]" />
-                      ) : (
-                        <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)]" />
-                      )}
-                      <span>
-                        {scannerStep === 'connecting'
-                          ? (lang === 'ar' ? 'جارٍ الاتصال بالخادم...' : 'Connexion au serveur...')
-                          : scannerStatusMsg || (lang === 'ar' ? 'جارٍ المعالجة...' : 'Traitement...')}
-                      </span>
-                    </div>
-                    {scannerStep === 'error' && (
-                      <p className="text-[10px] opacity-90 font-normal leading-relaxed">
-                        {scannerStatusMsg}
-                      </p>
+                <div className="pt-1 space-y-2">
+                  <Button
+                    size="sm"
+                    onClick={handlePullFromNetwork}
+                    disabled={networkSyncStatus === 'pulling'}
+                    className="w-full h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
+                  >
+                    {networkSyncStatus === 'pulling' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>{lang === 'ar' ? 'جارٍ الاتصال وسحب البيانات...' : 'Connexion et téléchargement...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Radio className="w-4 h-4" />
+                        <span>{lang === 'ar' ? 'سحب البيانات من الهاتف الآخر (1 نقرة)' : 'Télécharger les données (1 clic)'}</span>
+                      </>
                     )}
-                  </div>
-                )}
-
-                {/* Camera Viewfinder if scanning */}
-                {isReceiverScannerOpen && (
-                  <div className="space-y-2 animate-in fade-in">
-                    <div
-                      id="qr-client-viewfinder"
-                      className="w-full max-w-[280px] h-[260px] mx-auto rounded-2xl overflow-hidden border-2 border-[var(--primary)] bg-black shadow-inner"
-                    />
-                    <div className="flex justify-center">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={stopReceiverScanner}
-                        className="h-8 text-xs font-bold border-[var(--danger-border)] text-[var(--danger)] hover:bg-red-500/10"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'إلغاء الكاميرا' : 'Annuler'}</span>
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions: Auto Discovery + QR Scanner + Direct IP Fallback */}
-                {!isReceiverScannerOpen && (
-                  <div className="pt-1 space-y-2.5">
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleAutoDiscoverySync}
-                        disabled={scannerStep === 'connecting'}
-                        className="h-11 text-xs font-black rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-98"
-                      >
-                        <Radio className="w-4 h-4 text-white animate-pulse" />
-                        <span>{lang === 'ar' ? 'اتصال تلقائي (Wi-Fi)' : 'Auto Détection'}</span>
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        onClick={startReceiverScanner}
-                        variant="outline"
-                        className="h-11 text-xs font-bold rounded-xl border border-[var(--primary-border)] bg-[var(--surface)] text-[var(--text-primary)] hover:bg-[var(--surface-hover)] flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
-                      >
-                        <Camera className="w-4 h-4 text-[var(--primary)]" />
-                        <span>{lang === 'ar' ? 'مسح رمز QR' : 'Scanner QR'}</span>
-                      </Button>
-                    </div>
-
-                    {/* Direct IP input */}
-                    <div className="pt-1">
-                      <div className="flex gap-2">
-                        <Input
-                          value={localIpInput}
-                          onChange={(e) => setLocalIpInput(e.target.value)}
-                          placeholder="192.168.11.104:8080"
-                          className="h-9 text-xs font-mono bg-[var(--surface)] border-[var(--border)] text-[var(--text-primary)]"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => executeDirectSyncFetch(localIpInput)}
-                          disabled={!localIpInput.trim() || scannerStep === 'connecting'}
-                          className="h-9 px-4 text-xs font-bold rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text-primary)] shrink-0"
-                        >
-                          <ArrowDownLeft className="w-3.5 h-3.5 text-[var(--primary)]" />
-                          <span>{lang === 'ar' ? 'سحب' : 'Sync'}</span>
-                        </Button>
-                      </div>
-                      <span className="text-[10px] text-[var(--text-muted)] text-center block pt-1">
-                        {lang === 'ar' ? 'يمكنك إدخال عنوان IP الموضح في الهاتف الأول مباشرة' : 'Vous pouvez saisir l IP affichée sur le premier téléphone'}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                  </Button>
+                </div>
               </div>
 
             </div>
