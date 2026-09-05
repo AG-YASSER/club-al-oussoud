@@ -1,3 +1,4 @@
+import { ImagePreviewModal } from './ImagePreviewModal';
 import React, { useState, useEffect } from 'react';
 import { Member, db } from '../db/db';
 import { syncEngine } from '../db/syncEngine';
@@ -28,6 +29,7 @@ export function MobileMemberModal({
   const [notes, setNotes] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const t = translations[lang] || translations.fr;
@@ -180,7 +182,15 @@ export function MobileMemberModal({
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             {/* Photo Avatar Row */}
             <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--surface)] border border-[var(--border)]">
-              <div className="w-14 h-14 rounded-full bg-[var(--card-solid)] border-2 border-[var(--border-hover)] flex items-center justify-center overflow-hidden shrink-0">
+              <div
+                onClick={() => {
+                  if (photo) setShowImagePreview(true);
+                }}
+                className={`w-14 h-14 rounded-full bg-[var(--card-solid)] border-2 border-[var(--border-hover)] flex items-center justify-center overflow-hidden shrink-0 ${
+                  photo ? 'cursor-zoom-in ring-2 ring-primary/40 hover:ring-primary hover:scale-105 transition-all' : ''
+                }`}
+                title={photo ? (lang === 'ar' ? 'اضغط لتكبير الصورة' : 'Cliquer pour agrandir') : undefined}
+              >
                 {photo ? (
                   <img src={photo} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -281,6 +291,17 @@ export function MobileMemberModal({
           </form>
         )}
       </div>
+
+      {/* Full-size Image Zoom Modal */}
+      {photo && (
+        <ImagePreviewModal
+          isOpen={showImagePreview}
+          src={photo}
+          title={fullName || (lang === 'ar' ? 'صورة العضو' : 'Photo du membre')}
+          alt={fullName || 'Photo'}
+          onClose={() => setShowImagePreview(false)}
+        />
+      )}
     </Sheet>
   );
 }

@@ -173,16 +173,20 @@ export function Sheet({
 export function Avatar({
   src,
   fallback,
-  className
+  className,
+  onClick
 }: {
   src?: string
   fallback: string
   className?: string
+  onClick?: (e: React.MouseEvent) => void
 }) {
   return (
     <div
+      onClick={onClick}
       className={cn(
         "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800 border border-zinc-700/80 items-center justify-center text-xs font-semibold text-zinc-300",
+        onClick && "cursor-pointer hover:opacity-90 active:scale-95 transition-transform",
         className
       )}
     >

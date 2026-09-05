@@ -1,3 +1,4 @@
+import { ImagePreviewModal } from './ImagePreviewModal';
 import React, { useState } from 'react';
 import { Member, MembershipPlan, getSubscriptionStatus } from '../db/db';
 import { Avatar, Badge } from './ui/shadcn';
@@ -39,6 +40,7 @@ export function MemberCard({
   lang = 'fr'
 }: MemberCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
   const { status, daysRemaining } = getSubscriptionStatus(member);
   const t = translations[lang] || translations.fr;
 
@@ -130,7 +132,13 @@ export function MemberCard({
             <Avatar
               src={member.photo || undefined}
               fallback={member.fullName.substring(0, 2).toUpperCase()}
-              className="w-11 h-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)]"
+              className={`w-11 h-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] ${member.photo ? 'cursor-zoom-in ring-1 ring-primary/30 hover:ring-primary hover:scale-105 transition-all' : ''}`}
+              onClick={(e) => {
+                if (member.photo) {
+                  e.stopPropagation();
+                  setShowImageModal(true);
+                }
+              }}
             />
             <span
               className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--background)] ${getStatusDot()}`}
@@ -299,6 +307,17 @@ export function MemberCard({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Full Size Member Photo Modal */}
+      {member.photo && (
+        <ImagePreviewModal
+          isOpen={showImageModal}
+          src={member.photo}
+          title={member.fullName}
+          alt={member.fullName}
+          onClose={() => setShowImageModal(false)}
+        />
       )}
     </div>
   );
