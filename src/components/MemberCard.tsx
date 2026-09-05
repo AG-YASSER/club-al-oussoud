@@ -26,6 +26,8 @@ interface MemberCardProps {
   onBlockedRenewal?: (member: Member) => void;
   onDeleteMember?: (member: Member) => void;
   onEditMember?: (member: Member) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
   lang?: SupportedLanguage;
 }
 
@@ -37,9 +39,19 @@ export function MemberCard({
   onBlockedRenewal,
   onDeleteMember,
   onEditMember,
+  isExpanded,
+  onToggleExpand,
   lang = 'fr'
 }: MemberCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = isExpanded !== undefined ? isExpanded : localExpanded;
+  const handleToggle = () => {
+    if (onToggleExpand) {
+      onToggleExpand();
+    } else {
+      setLocalExpanded(!localExpanded);
+    }
+  };
   const [showImageModal, setShowImageModal] = useState(false);
   const { status, daysRemaining } = getSubscriptionStatus(member);
   const t = translations[lang] || translations.fr;
@@ -124,7 +136,7 @@ export function MemberCard({
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden transition-all duration-200 hover:border-[var(--border-hover)] shadow-sm">
       {/* Header */}
       <div
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleToggle}
         className="p-3 flex items-center justify-between cursor-pointer select-none active:bg-[var(--surface-hover)]"
       >
         <div className="flex items-center space-x-3 rtl:space-x-reverse min-w-0">

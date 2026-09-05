@@ -52,6 +52,7 @@ export function App() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
   const [renewingMember, setRenewingMember] = useState<Member | null>(null);
   const [memberForDebtSettlement, setMemberForDebtSettlement] = useState<Member | null>(null);
@@ -369,6 +370,10 @@ export function App() {
                         key={member.id}
                         member={member}
                         plans={plans}
+                        isExpanded={expandedMemberId === member.id}
+                        onToggleExpand={() => {
+                          setExpandedMemberId(expandedMemberId === member.id ? null : member.id);
+                        }}
                         onRenew={handleRequestRenewal}
                         onSettleDebt={(m) => setMemberForDebtSettlement(m)}
                         onBlockedRenewal={(m) => setBlockedRenewalMember(m)}
