@@ -1,4 +1,4 @@
-﻿import LZString from 'lz-string';
+import LZString from 'lz-string';
 import { db, Member, MembershipPlan, Subscription, Payment } from '../db/db';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -54,6 +54,7 @@ export async function generateOfflineSyncPayload(): Promise<{ raw: string; compr
         n: m.fullName,
         p: m.phone || '',
         ec: m.emergencyContact || '',
+        ph: m.photo || null,
         pl: m.planId,
         pn: m.planName,
         s: m.startDate,
@@ -120,11 +121,11 @@ export async function applyOfflineSyncPayload(
             const existing = existingMap.get(item.id);
             membersToPut.push({
               ...item,
-              photo: existing?.photo || item.photo || null,
+              photo: item.photo !== undefined ? item.photo : (existing?.photo || null),
               updatedAt: Math.max(item.updatedAt || Date.now(), existing?.updatedAt || 0)
             });
           } else {
-            // Minified format (i, n, p, ec, pl, pn, s, e, pd, ad, del, nt, u)
+            // Minified format (i, n, p, ec, ph, pl, pn, s, e, pd, ad, del, nt, u)
             const existing = existingMap.get(item.i);
             membersToPut.push({
               id: item.i,
@@ -132,7 +133,7 @@ export async function applyOfflineSyncPayload(
               phone: item.p || existing?.phone || '',
               emergencyContact: item.ec || existing?.emergencyContact || '',
               email: existing?.email || '',
-              photo: existing?.photo || null,
+              photo: item.ph !== undefined ? item.ph : (existing?.photo || null),
               joinedDate: item.s || existing?.joinedDate || new Date().toISOString().split('T')[0],
               planId: item.pl,
               planName: item.pn,

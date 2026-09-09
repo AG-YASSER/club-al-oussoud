@@ -10,6 +10,7 @@
     <img src="https://img.shields.io/badge/TailwindCSS-v4-38bdf8?logo=tailwind-css" alt="Tailwind" />
     <img src="https://img.shields.io/badge/PWA-Installable-orange?logo=pwa" alt="PWA" />
     <img src="https://img.shields.io/badge/Offline--First-IndexedDB-emerald" alt="Offline-First" />
+    <img src="https://img.shields.io/badge/Same--Network%20Sync-Wi--Fi-purple" alt="Same-Network Sync" />
     <img src="https://img.shields.io/badge/Vercel-Ready-black?logo=vercel" alt="Vercel Ready" />
   </p>
 </div>
@@ -25,33 +26,39 @@
 ## 🚀 Fonctionnalités Clés (Features)
 
 ### 1. 📋 Gestion Intelligente des Membres (CRM Membres)
-- **Fiches Adhérents Complètes** : Nom, téléphone, contact d'urgence, formule, date de fin, et photo de profil.
-- **Remplacement Intégral du Carnet Papier** : Suivi distinct des membres **Payés** et **Non Payés (Dettes)** avec badge d'alerte.
-- **Capture Photo Directe** : Prise de photo en direct via la caméra du smartphone ou import depuis la galerie, avec compression WebP locale.
+- **Fiches Adhérents Flexibles** : Nom complet obligatoire, numéro de téléphone optionnel, formule, date d'échéance et notes.
+- **Remplacement Intégral du Carnet Papier** : Suivi distinct des membres **Payés** et **Non Payés (Dettes)** avec badge d'alerte et gestion des crédits.
+- **Capture & Zoom Photo Avancé** : Prise de vue via caméra native ou import galerie (compression WebP). Modal d'affichage avec **zoom tactile multi-doigts (pinch-to-zoom)**, déplacement au doigt, double-tap et commandes de zoom.
 - **Pointage Rapide en 1 Clic** : Validation instantanée de présence à l'entrée avec animations festives et retour sonore.
 
 ### 2. 📞 Communication Directe & Native
 - **Appel Téléphonique en 1 Clic** : Bouton direct ouvrant le numéroteur natif du smartphone (`tel:+212...`).
 - **Relances WhatsApp Automatisées** : Message de rappel pré-rempli et personnalisé selon le statut (retard de paiement, abonnement expiré, ou échéance imminente) directement sur WhatsApp (`wa.me`).
 - **Envoi SMS Hors-Ligne** : Lien de secours via SMS natif (`sms:+212...`).
+- **Gestion sans téléphone** : Prise en charge fluide et désactivation propre des boutons pour les membres inscrits sans numéro.
 
-### 3. 💰 Trésorerie & Statistiques Financières (Finance Tab)
+### 3. 📡 Mémorisation & Mégamutation Réseau (Same-Network & Offline Sync)
+- **Mélange Même Réseau Wi-Fi** : Synchronisation directe entre smartphones sur le même routeur Wi-Fi en 1 clic (émetteur / récepteur).
+- **Synchronisation Complète incluant les Photos** : Transmission des données de base de données Dexie ainsi que des photos de profil WebP compressées.
+- **Support Multi-Onglets** : Synchronisation instantanée entre onglets ouverts sur le même appareil via `BroadcastChannel`.
+
+### 4. 💰 Trésorerie & Statistiques Financières (Finance Tab)
 - **Tableau de Bord Visuel** : Revenu mensuel (DH), Total des impayés, et Taux de recouvrement en temps réel.
 - **Graphique Interactif Recharts** : Visualisation des encaissements journaliers du mois en cours.
 - **Gestion des Dettes** : Liste dédiée des membres ayant des cotisations en attente avec bouton d'encaissement direct.
 - **Export Comptable** : Export en 1 clic sous format **Excel / CSV** et relevé officiel imprimable **PDF**.
 
-### 4. 📅 Calendrier d'Échéances & Relances (Calendar Tab)
+### 5. 📅 Calendrier d'Échéances & Relances (Calendar Tab)
 - Calendrier mensuel 7 colonnes affichant visuellement les jours critiques.
 - Puces d'alertes colorées : 🟠 Abonnements arrivant à terme sous 7 jours / 🔴 Cotisations impayées.
 - Tiroir d'inspection journalière avec relances WhatsApp directes.
 
-### 5. 🌍 Moteur Multilingue Intégral (i18n)
+### 6. 🌍 Moteur Multilingue Intégral (i18n)
 - **العربية (Arabe)** : Support complet RTL (Right-to-Left) avec devises en Dirham Marocain (**د.م.**).
 - **Français** : Interface soignée et terminologie adaptée aux clubs sportifs marocains.
 - **English** : Traduction intégrale pour usage international.
 
-### 6. 🔒 Sécurité & Persistance Hors-Ligne (Offline-First)
+### 7. 🔒 Sécurité & Persistance Hors-Ligne (Offline-First)
 - **100% Fonctionnel Sans Internet** : Toutes les données sont stockées en local sur le téléphone via **IndexedDB (Dexie.js)**.
 - **Centre de Sauvegarde Sécurisé** : Exportation et restauration de copies de sécurité chiffrées en JSON en 1 clic.
 
@@ -63,8 +70,9 @@
 - **Design System & UI** : Tailwind CSS v4, Radix UI Primitives, Lucide Icons, Tabler Icons
 - **Data Visualization** : Recharts
 - **Base de Données Locale** : Dexie.js (IndexedDB)
+- **Compression & Sync** : LZ-String, BroadcastChannel, REST Wi-Fi Relay
 - **PWA / Service Worker** : `manifest.json` + `sw.js` (Installation native sur Android & iOS)
-- **Déploiement** : Vercel (avec en-têtes HTTP sécurisés CSP & X-Frame-Options)
+- **Déploiement** : Vercel (avec en-têtes HTTP sécurisés CORS, CSP & X-Frame-Options)
 
 ---
 
@@ -72,7 +80,7 @@
 
 ```bash
 # 1. Cloner le dépôt
-git clone https://github.com/YOUR_USERNAME/club-al-oussoud.git
+git clone https://github.com/AG-YASSER/club-al-oussoud.git
 cd club-al-oussoud
 
 # 2. Installer les dépendances

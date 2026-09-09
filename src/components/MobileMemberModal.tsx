@@ -91,8 +91,8 @@ export function MobileMemberModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !phone.trim()) {
-      setError(lang === 'ar' ? 'يرجى إدخال الاسم الكامل ورقم الهاتف' : 'Veuillez saisir le nom complet et le numéro de téléphone.');
+    if (!fullName.trim()) {
+      setError(lang === 'ar' ? 'يرجى إدخال الاسم الكامل' : 'Veuillez saisir le nom complet.');
       return;
     }
 
@@ -251,14 +251,13 @@ export function MobileMemberModal({
             {/* Phone */}
             <div>
               <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
-                {lang === 'ar' ? 'رقم الهاتف' : 'Téléphone'} <span className="text-[var(--primary)]">*</span>
+                {lang === 'ar' ? 'رقم الهاتف (اختياري)' : 'Téléphone (Optionnel)'}
               </label>
               <Input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder={lang === 'ar' ? 'مثال: 0612345678' : 'Ex: 06 12 34 56 78'}
                 className="bg-[var(--surface)] border-[var(--border)] text-[var(--text-primary)] font-mono"
-                required
               />
             </div>
 

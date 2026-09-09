@@ -137,7 +137,7 @@ class SameNetworkSyncEngine {
       // 1-Click check with cache buster
       const res = await fetch(getSyncApiUrl(`?t=${Date.now()}`), {
         method: 'GET',
-        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
+        headers: { 'Accept': 'application/json' }
       });
 
       if (!res.ok) {

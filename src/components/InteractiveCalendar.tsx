@@ -445,8 +445,8 @@ export function InteractiveCalendar({
               const hasDebt = (member.amountDue || 0) > 0 || !member.isPaid;
               const formattedPhone = cleanPhone(member.phone);
               const reminderMsg = getWhatsAppReminder(lang, member.fullName, member.planName, 0, hasDebt);
-              const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(reminderMsg)}`;
-              const telUrl = `tel:+${formattedPhone}`;
+              const waUrl = member.phone ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(reminderMsg)}` : '#';
+              const telUrl = member.phone ? `tel:+${formattedPhone}` : '#';
 
               return (
                 <div
@@ -457,7 +457,7 @@ export function InteractiveCalendar({
                     <div>
                       <div className="font-bold text-sm text-[var(--text-primary)]">{member.fullName}</div>
                       <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                        {member.planName} • {member.phone}
+                        {member.planName} {member.phone ? `• ${member.phone}` : ''}
                       </div>
                     </div>
 
@@ -474,23 +474,37 @@ export function InteractiveCalendar({
 
                   {/* Actions: Call, WhatsApp, Settle / Renew */}
                   <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-                    <a
-                      href={telUrl}
-                      className="h-8 rounded-lg bg-[var(--surface-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] active:scale-95"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-[var(--primary)]" />
-                      <span>{tTexts.callBtn}</span>
-                    </a>
+                    {member.phone ? (
+                      <a
+                        href={telUrl}
+                        className="h-8 rounded-lg bg-[var(--surface-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] active:scale-95"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-[var(--primary)]" />
+                        <span>{tTexts.callBtn}</span>
+                      </a>
+                    ) : (
+                      <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>{tTexts.callBtn}</span>
+                      </div>
+                    )}
 
-                    <a
-                      href={waUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="h-8 rounded-lg bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--success-border)] active:scale-95"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>{tTexts.waBtn}</span>
-                    </a>
+                    {member.phone ? (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="h-8 rounded-lg bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--success-border)] active:scale-95"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>{tTexts.waBtn}</span>
+                      </a>
+                    ) : (
+                      <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>{tTexts.waBtn}</span>
+                      </div>
+                    )}
 
                     {hasDebt ? (
                       <Button

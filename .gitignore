@@ -43,3 +43,6 @@ local.properties
 
 # Sync cache
 club_sync_store.json
+
+# TypeScript build info
+*.tsbuildinfo

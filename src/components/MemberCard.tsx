@@ -198,9 +198,15 @@ export function MemberCard({
           <div className="grid grid-cols-2 gap-2 text-xs bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--border)]">
             <div>
               <span className="text-[var(--text-muted)] block text-[10px] uppercase font-bold">{t.phone}</span>
-              <a href={callUrl} className="font-semibold text-[var(--primary)] hover:underline">
-                {member.phone}
-              </a>
+              {member.phone ? (
+                <a href={callUrl} className="font-semibold text-[var(--primary)] hover:underline">
+                  {member.phone}
+                </a>
+              ) : (
+                <span className="font-medium text-[var(--text-muted)] italic">
+                  {lang === 'ar' ? 'غير متوفر' : 'Non renseigné'}
+                </span>
+              )}
             </div>
             <div>
               <span className="text-[var(--text-muted)] block text-[10px] uppercase font-bold">{t.dueDate || 'Échéance'}</span>
@@ -216,37 +222,67 @@ export function MemberCard({
 
           {/* 4 Action Buttons Grid */}
           <div className="grid grid-cols-4 gap-1.5">
-            <a
-              href={callUrl}
-              onClick={(e) => e.stopPropagation()}
-              className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[11px] font-bold border border-[var(--border)] transition-colors active:scale-95 shadow-sm"
-              title={t.call}
-            >
-              <Phone className="w-4 h-4 text-[var(--primary)] mb-0.5" />
-              <span>{t.call}</span>
-            </a>
+            {member.phone ? (
+              <a
+                href={callUrl}
+                onClick={(e) => e.stopPropagation()}
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[11px] font-bold border border-[var(--border)] transition-colors active:scale-95 shadow-sm"
+                title={t.call}
+              >
+                <Phone className="w-4 h-4 text-[var(--primary)] mb-0.5" />
+                <span>{t.call}</span>
+              </a>
+            ) : (
+              <div
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] opacity-40 text-[var(--text-muted)] text-[11px] font-bold border border-[var(--border)] cursor-not-allowed select-none shadow-sm"
+                title={lang === 'ar' ? 'لا يوجد رقم هاتف' : 'Aucun numéro'}
+              >
+                <Phone className="w-4 h-4 mb-0.5" />
+                <span>{t.call}</span>
+              </div>
+            )}
 
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--success-bg)] hover:opacity-90 text-[var(--success)] text-[11px] font-bold border border-[var(--success-border)] transition-colors active:scale-95 shadow-sm"
-              title="WhatsApp"
-            >
-              <MessageCircle className="w-4 h-4 text-[var(--success)] mb-0.5" />
-              <span>WhatsApp</span>
-            </a>
+            {member.phone ? (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--success-bg)] hover:opacity-90 text-[var(--success)] text-[11px] font-bold border border-[var(--success-border)] transition-colors active:scale-95 shadow-sm"
+                title="WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4 text-[var(--success)] mb-0.5" />
+                <span>WhatsApp</span>
+              </a>
+            ) : (
+              <div
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] opacity-40 text-[var(--text-muted)] text-[11px] font-bold border border-[var(--border)] cursor-not-allowed select-none shadow-sm"
+                title={lang === 'ar' ? 'لا يوجد رقم هاتف' : 'Aucun numéro'}
+              >
+                <MessageCircle className="w-4 h-4 mb-0.5" />
+                <span>WhatsApp</span>
+              </div>
+            )}
 
-            <a
-              href={smsUrl}
-              onClick={(e) => e.stopPropagation()}
-              className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[11px] font-bold border border-[var(--border)] transition-colors active:scale-95 shadow-sm"
-              title={t.sms}
-            >
-              <MessageSquare className="w-4 h-4 text-[var(--info)] mb-0.5" />
-              <span>{t.sms}</span>
-            </a>
+            {member.phone ? (
+              <a
+                href={smsUrl}
+                onClick={(e) => e.stopPropagation()}
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[11px] font-bold border border-[var(--border)] transition-colors active:scale-95 shadow-sm"
+                title={t.sms}
+              >
+                <MessageSquare className="w-4 h-4 text-[var(--info)] mb-0.5" />
+                <span>{t.sms}</span>
+              </a>
+            ) : (
+              <div
+                className="flex flex-col items-center justify-center py-2 rounded-lg bg-[var(--surface)] opacity-40 text-[var(--text-muted)] text-[11px] font-bold border border-[var(--border)] cursor-not-allowed select-none shadow-sm"
+                title={lang === 'ar' ? 'لا يوجد رقم هاتف' : 'Aucun numéro'}
+              >
+                <MessageSquare className="w-4 h-4 mb-0.5" />
+                <span>{t.sms}</span>
+              </div>
+            )}
 
             {/* Renewal Button (Disabled / Warning if active debt exists) */}
             <button
