@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Member, MembershipPlan, db } from '../db/db';
 import { Card, Badge, Button } from './ui/shadcn';
 import {
@@ -8,7 +8,9 @@ import {
   Phone,
   MessageCircle,
   RefreshCw,
-  Banknote
+  Banknote,
+  CalendarCheck,
+  X
 } from 'lucide-react';
 import {
   format,
@@ -71,6 +73,7 @@ export function InteractiveCalendar({
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [filterMode, setFilterMode] = useState<'all' | 'expiring' | 'debts'>('all');
   const [liveDbMembers, setLiveDbMembers] = useState<Member[]>([]);
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
 
   const isRTL = lang === 'ar';
 
@@ -121,36 +124,57 @@ export function InteractiveCalendar({
       {
         expiring: Member[];
         debts: Member[];
+        paid: Member[];
         all: Member[];
       }
     > = {};
 
     const getEntry = (key: string) => {
       if (!map[key]) {
-        map[key] = { expiring: [], debts: [], all: [] };
+        map[key] = { expiring: [], debts: [], paid: [], all: [] };
       }
       return map[key];
     };
 
+    const todayKey = normalizeDateKey(new Date());
+
     activeMembers.forEach((member) => {
       const hasDebt = (member.amountDue || 0) > 0 || !member.isPaid;
       const expiryKey = normalizeDateKey(member.expiryDate);
+      const startKey = normalizeDateKey(member.startDate);
 
-      // Debts & Expirations: Strictly map to expiryDate (due/collection date next month)
-      // Never map debts to startDate (registration date)
+      // --- Map to expiryDate ---
       if (expiryKey) {
         const entry = getEntry(expiryKey);
         if (hasDebt) {
+          // Red dot: has unpaid debt
           if (!entry.debts.some((m) => m.id === member.id)) {
             entry.debts.push(member);
           }
+        } else if (expiryKey < todayKey) {
+          // Green dot: fully paid AND expiry date already passed
+          if (!entry.paid.some((m) => m.id === member.id)) {
+            entry.paid.push(member);
+          }
         } else {
+          // Orange dot: expiring today or future
           if (!entry.expiring.some((m) => m.id === member.id)) {
             entry.expiring.push(member);
           }
         }
         if (!entry.all.some((m) => m.id === member.id)) {
           entry.all.push(member);
+        }
+      }
+
+      // --- Also map paid members to startDate (day they paid) ---
+      if (!hasDebt && startKey && startKey !== expiryKey) {
+        const startEntry = getEntry(startKey);
+        if (!startEntry.paid.some((m) => m.id === member.id)) {
+          startEntry.paid.push(member);
+        }
+        if (!startEntry.all.some((m) => m.id === member.id)) {
+          startEntry.all.push(member);
         }
       }
     });
@@ -168,6 +192,35 @@ export function InteractiveCalendar({
   const selectedDateStr = normalizeDateKey(selectedDate);
   const todayStr = normalizeDateKey(new Date());
 
+  // State for expiry date edit modal
+  const [editExpiryMember, setEditExpiryMember] = useState<Member | null>(null);
+  const [editExpiryDate, setEditExpiryDate] = useState('');
+  const [editExpiryLoading, setEditExpiryLoading] = useState(false);
+
+  const handleOpenEditExpiry = (member: Member) => {
+    setEditExpiryMember(member);
+    setEditExpiryDate(normalizeDateKey(member.expiryDate));
+  };
+
+  const handleSaveEditExpiry = async () => {
+    if (!editExpiryMember || !editExpiryDate) return;
+    setEditExpiryLoading(true);
+    try {
+      await db.members.update(editExpiryMember.id, {
+        expiryDate: editExpiryDate,
+        updatedAt: Date.now()
+      });
+      // Refresh live members
+      const list = await db.members.filter((m) => !m.isDeleted).toArray();
+      setLiveDbMembers(list);
+      setEditExpiryMember(null);
+    } catch (err) {
+      console.error('Failed to update expiry date:', err);
+    } finally {
+      setEditExpiryLoading(false);
+    }
+  };
+
   // Filtered members for the currently selected date
   const dayMembers = useMemo(() => {
     const entry = agendaByDate[selectedDateStr];
@@ -178,6 +231,9 @@ export function InteractiveCalendar({
     }
     if (filterMode === 'debts') {
       return entry.debts;
+    }
+    if (filterMode === 'paid') {
+      return entry.paid;
     }
     return entry.all;
   }, [agendaByDate, selectedDateStr, filterMode]);
@@ -209,6 +265,11 @@ export function InteractiveCalendar({
 
   const handleDayClick = (day: Date) => {
     setSelectedDate(day);
+    setExpandedMemberId(null);
+  };
+
+  const handleMemberClick = (memberId: string) => {
+    setExpandedMemberId((prev) => (prev === memberId ? null : memberId));
   };
 
   // Localized texts
@@ -231,6 +292,22 @@ export function InteractiveCalendar({
       lang === 'ar' ? 'الاشتراكات' : lang === 'en' ? 'Expirations' : 'Expirations',
     filterDebts:
       lang === 'ar' ? 'الديون' : lang === 'en' ? 'Debts' : 'Dettes',
+    filterPaid:
+      lang === 'ar' ? 'المدفوعين' : lang === 'en' ? 'Paid' : 'Payés',
+    legendPaid:
+      lang === 'ar' ? 'خلص الاشتراك' : lang === 'en' ? 'Subscription Settled' : 'Abonnement soldé',
+    editExpiryTitle:
+      lang === 'ar' ? 'تعديل تاريخ الانتهاء' : lang === 'en' ? 'Edit Expiry Date' : 'Modifier la date',
+    editExpiryLabel:
+      lang === 'ar' ? 'تاريخ الانتهاء الفعلي' : lang === 'en' ? 'Actual Expiry Date' : 'Date réelle',
+    editExpiryBtn:
+      lang === 'ar' ? 'حفظ التاريخ' : lang === 'en' ? 'Save Date' : 'Enregistrer',
+    editExpiryCancel:
+      lang === 'ar' ? 'إلغاء' : lang === 'en' ? 'Cancel' : 'Annuler',
+    changeDate:
+      lang === 'ar' ? 'تعديل التاريخ' : lang === 'en' ? 'Change Date' : 'Changer date',
+    paidBadge:
+      lang === 'ar' ? 'خلص ✓' : lang === 'en' ? 'Paid ✓' : 'Payé ✓',
     callBtn:
       lang === 'ar' ? 'اتصال' : lang === 'en' ? 'Call' : 'Appel',
     waBtn:
@@ -343,7 +420,8 @@ export function InteractiveCalendar({
             const dayEntry = agendaByDate[dateStr];
             const hasDebts = (dayEntry?.debts.length || 0) > 0;
             const hasExpiring = (dayEntry?.expiring.length || 0) > 0;
-            const hasEvents = hasDebts || hasExpiring;
+            const hasPaid = (dayEntry?.paid.length || 0) > 0;
+            const hasEvents = hasDebts || hasExpiring || hasPaid;
 
             const isSelected = isSameDay(day, selectedDate);
             const isCurrentMonthDay = isSameMonth(day, currentMonth);
@@ -369,7 +447,7 @@ export function InteractiveCalendar({
 
                 {/* Status Indicator Dots */}
                 {hasEvents && isCurrentMonthDay && (
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-0.5 mt-0.5">
                     {hasDebts && (
                       <span
                         title={tTexts.legendDebt}
@@ -382,6 +460,12 @@ export function InteractiveCalendar({
                         className="w-1.5 h-1.5 rounded-full bg-orange-500"
                       />
                     )}
+                    {hasPaid && (
+                      <span
+                        title={tTexts.legendPaid}
+                        className="w-1.5 h-1.5 rounded-full bg-green-500"
+                      />
+                    )}
                   </div>
                 )}
               </button>
@@ -390,7 +474,7 @@ export function InteractiveCalendar({
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-center gap-5 pt-3 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] font-medium">
+        <div className="flex items-center justify-center gap-3 pt-3 border-t border-[var(--border-subtle)] text-[10px] text-[var(--text-secondary)] font-medium flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-orange-500" />
             <span>{tTexts.legendExpiry}</span>
@@ -398,6 +482,10 @@ export function InteractiveCalendar({
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-red-500" />
             <span>{tTexts.legendDebt}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span>{tTexts.legendPaid}</span>
           </div>
         </div>
       </Card>
@@ -422,14 +510,20 @@ export function InteractiveCalendar({
           {[
             { id: 'all', label: tTexts.filterAll },
             { id: 'expiring', label: tTexts.filterExpiring },
-            { id: 'debts', label: tTexts.filterDebts }
+            { id: 'debts', label: tTexts.filterDebts },
+            { id: 'paid', label: tTexts.filterPaid }
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setFilterMode(item.id as any)}
-              className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
+              onClick={() => {
+                setFilterMode(item.id as any);
+                setExpandedMemberId(null);
+              }}
+              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all ${
                 filterMode === item.id
-                  ? 'bg-[var(--primary)] text-white shadow-sm'
+                  ? item.id === 'paid'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-[var(--primary)] text-white shadow-sm'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -447,13 +541,22 @@ export function InteractiveCalendar({
               const reminderMsg = getWhatsAppReminder(lang, member.fullName, member.planName, 0, hasDebt);
               const waUrl = member.phone ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(reminderMsg)}` : '#';
               const telUrl = member.phone ? `tel:+${formattedPhone}` : '#';
+              const isExpanded = expandedMemberId === member.id;
 
               return (
                 <div
                   key={member.id}
-                  className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 space-y-2.5 text-xs shadow-sm"
+                  className={`rounded-xl border bg-[var(--surface)] p-3 space-y-2.5 text-xs shadow-sm transition-all ${
+                    isExpanded
+                      ? 'border-[var(--primary)] ring-1 ring-[var(--primary)]/30'
+                      : 'border-[var(--border)]'
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => handleMemberClick(member.id)}
+                    className="w-full flex items-center justify-between text-start"
+                  >
                     <div>
                       <div className="font-bold text-sm text-[var(--text-primary)]">{member.fullName}</div>
                       <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
@@ -465,67 +568,94 @@ export function InteractiveCalendar({
                       <Badge variant="destructive" className="font-mono text-xs font-black">
                         {tTexts.debtBadge(member.amountDue || 0)}
                       </Badge>
+                    ) : normalizeDateKey(member.expiryDate) < normalizeDateKey(new Date()) ? (
+                      <Badge className="font-mono text-xs font-bold bg-green-600/20 text-green-400 border border-green-500/30">
+                        {tTexts.paidBadge}
+                      </Badge>
                     ) : (
                       <Badge variant="orange" className="font-mono text-xs font-bold">
                         {tTexts.expiringBadge}
                       </Badge>
                     )}
-                  </div>
+                  </button>
 
-                  {/* Actions: Call, WhatsApp, Settle / Renew */}
-                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-                    {member.phone ? (
-                      <a
-                        href={telUrl}
-                        className="h-8 rounded-lg bg-[var(--surface-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] active:scale-95"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-[var(--primary)]" />
-                        <span>{tTexts.callBtn}</span>
-                      </a>
-                    ) : (
-                      <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>{tTexts.callBtn}</span>
+                  {/* Actions: Call, WhatsApp, Primary Action — only when user is expanded */}
+                  {isExpanded && (
+                    <div className="space-y-1.5 pt-1 border-t border-[var(--border-subtle)]">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {member.phone ? (
+                          <a
+                            href={telUrl}
+                            className="h-8 rounded-lg bg-[var(--surface-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] active:scale-95"
+                          >
+                            <Phone className="w-3.5 h-3.5 text-[var(--primary)]" />
+                            <span>{tTexts.callBtn}</span>
+                          </a>
+                        ) : (
+                          <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{tTexts.callBtn}</span>
+                          </div>
+                        )}
+
+                        {member.phone ? (
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-8 rounded-lg bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--success-border)] active:scale-95"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>{tTexts.waBtn}</span>
+                          </a>
+                        ) : (
+                          <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>{tTexts.waBtn}</span>
+                          </div>
+                        )}
+
+                        {hasDebt ? (
+                          <Button
+                            size="sm"
+                            onClick={() => onSettleDebt(member)}
+                            className="h-8 text-xs font-bold bg-[var(--danger)] hover:opacity-90 text-white"
+                          >
+                            <Banknote className="w-3.5 h-3.5 mr-1" />
+                            <span>{tTexts.settleBtn}</span>
+                          </Button>
+                        ) : normalizeDateKey(member.expiryDate) < normalizeDateKey(new Date()) ? (
+                          <Button
+                            size="sm"
+                            onClick={() => handleOpenEditExpiry(member)}
+                            className="h-8 text-xs font-bold bg-green-700/80 hover:bg-green-700 text-white w-full"
+                          >
+                            <CalendarCheck className="w-3 h-3 mr-1" />
+                            <span>{tTexts.changeDate}</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => onRenew(member)}
+                            className="h-8 text-xs font-bold bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)] w-full"
+                          >
+                            <RefreshCw className="w-3 h-3 mr-1" />
+                            <span>{tTexts.renewBtn}</span>
+                          </Button>
+                        )}
                       </div>
-                    )}
 
-                    {member.phone ? (
-                      <a
-                        href={waUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="h-8 rounded-lg bg-[var(--success-bg)] text-[var(--success)] flex items-center justify-center gap-1 font-bold text-xs border border-[var(--success-border)] active:scale-95"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>{tTexts.waBtn}</span>
-                      </a>
-                    ) : (
-                      <div className="h-8 rounded-lg bg-[var(--surface)] text-[var(--text-muted)] opacity-40 flex items-center justify-center gap-1 font-bold text-xs border border-[var(--border)] cursor-not-allowed">
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>{tTexts.waBtn}</span>
-                      </div>
-                    )}
-
-                    {hasDebt ? (
-                      <Button
-                        size="sm"
-                        onClick={() => onSettleDebt(member)}
-                        className="h-8 text-xs font-bold bg-[var(--danger)] hover:opacity-90 text-white"
-                      >
-                        <Banknote className="w-3.5 h-3.5 mr-1" />
-                        <span>{tTexts.settleBtn}</span>
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => onRenew(member)}
-                        className="h-8 text-xs font-bold bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)]"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                        <span>{tTexts.renewBtn}</span>
-                      </Button>
-                    )}
-                  </div>
+                      {!hasDebt && normalizeDateKey(member.expiryDate) >= normalizeDateKey(new Date()) && (
+                        <button
+                          onClick={() => handleOpenEditExpiry(member)}
+                          className="w-full h-7 rounded-lg border border-green-700/50 bg-green-700/10 text-green-400 text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700/20 transition-all active:scale-95"
+                        >
+                          <CalendarCheck className="w-3 h-3" />
+                          <span>{tTexts.changeDate}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -536,6 +666,67 @@ export function InteractiveCalendar({
           </div>
         )}
       </Card>
+
+      {/* Edit Expiry Date Modal */}
+      {editExpiryMember && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[var(--card)] border-t border-[var(--border)] rounded-t-2xl p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarCheck className="w-5 h-5 text-green-400" />
+                <h3 className="text-sm font-black text-[var(--text-primary)]">
+                  {tTexts.editExpiryTitle}
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditExpiryMember(null)}
+                className="p-1.5 rounded-lg hover:bg-[var(--surface-hover)] text-[var(--text-muted)] transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Member Info */}
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
+              <div className="text-sm font-bold text-[var(--text-primary)]">{editExpiryMember.fullName}</div>
+              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                {editExpiryMember.planName}
+              </div>
+            </div>
+
+            {/* Date Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[var(--text-secondary)] block">
+                {tTexts.editExpiryLabel}
+              </label>
+              <input
+                type="date"
+                value={editExpiryDate}
+                onChange={(e) => setEditExpiryDate(e.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={() => setEditExpiryMember(null)}
+                className="py-2.5 rounded-xl border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-all"
+              >
+                {tTexts.editExpiryCancel}
+              </button>
+              <button
+                onClick={handleSaveEditExpiry}
+                disabled={editExpiryLoading || !editExpiryDate}
+                className="py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-xs font-bold text-white transition-all"
+              >
+                {editExpiryLoading ? '...' : tTexts.editExpiryBtn}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
