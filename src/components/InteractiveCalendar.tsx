@@ -71,7 +71,7 @@ export function InteractiveCalendar({
 }: InteractiveCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [filterMode, setFilterMode] = useState<'all' | 'expiring' | 'debts'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'expiring' | 'debts' | 'paid'>('all');
   const [liveDbMembers, setLiveDbMembers] = useState<Member[]>([]);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
 
