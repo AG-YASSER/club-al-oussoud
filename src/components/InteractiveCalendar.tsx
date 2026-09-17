@@ -143,35 +143,38 @@ export function InteractiveCalendar({
       const expiryKey = normalizeDateKey(member.expiryDate);
       const startKey = normalizeDateKey(member.startDate);
 
-      // --- Map to expiryDate ---
+      // --- 1. Map to Expiry Date (يوم انتهاء الاشتراك) ---
       if (expiryKey) {
-        const entry = getEntry(expiryKey);
+        const expiryEntry = getEntry(expiryKey);
         if (hasDebt) {
-          // Red dot: has unpaid debt
-          if (!entry.debts.some((m) => m.id === member.id)) {
-            entry.debts.push(member);
-          }
-        } else if (expiryKey < todayKey) {
-          // Green dot: fully paid AND expiry date already passed
-          if (!entry.paid.some((m) => m.id === member.id)) {
-            entry.paid.push(member);
+          // Red dot on expiry date if has debt
+          if (!expiryEntry.debts.some((m) => m.id === member.id)) {
+            expiryEntry.debts.push(member);
           }
         } else {
-          // Orange dot: expiring today or future
-          if (!entry.expiring.some((m) => m.id === member.id)) {
-            entry.expiring.push(member);
+          // Orange dot on expiry date: subscription expires on this date
+          if (!expiryEntry.expiring.some((m) => m.id === member.id)) {
+            expiryEntry.expiring.push(member);
           }
         }
-        if (!entry.all.some((m) => m.id === member.id)) {
-          entry.all.push(member);
+        if (!expiryEntry.all.some((m) => m.id === member.id)) {
+          expiryEntry.all.push(member);
         }
       }
 
-      // --- Also map paid members to startDate (day they paid) ---
-      if (!hasDebt && startKey && startKey !== expiryKey) {
+      // --- 2. Map to Start / Payment Date (يوم الدفع) ---
+      if (startKey) {
         const startEntry = getEntry(startKey);
-        if (!startEntry.paid.some((m) => m.id === member.id)) {
-          startEntry.paid.push(member);
+        if (hasDebt) {
+          // Red dot also on start/payment date if has debt
+          if (!startEntry.debts.some((m) => m.id === member.id)) {
+            startEntry.debts.push(member);
+          }
+        } else {
+          // Green dot on start/payment date: subscription was paid on this date
+          if (!startEntry.paid.some((m) => m.id === member.id)) {
+            startEntry.paid.push(member);
+          }
         }
         if (!startEntry.all.some((m) => m.id === member.id)) {
           startEntry.all.push(member);
@@ -543,8 +546,8 @@ export function InteractiveCalendar({
               const telUrl = member.phone ? `tel:+${formattedPhone}` : '#';
               const isExpanded = expandedMemberId === member.id;
 
-              const currentDayPaid = agendaByDate[selectedDateStr]?.paid.some((m) => m.id === member.id);
-              const isPaidStatus = !hasDebt && (currentDayPaid || normalizeDateKey(member.expiryDate) < todayStr || member.isPaid);
+              const isPaymentDay = normalizeDateKey(member.startDate) === selectedDateStr;
+              const isExpiryDay = normalizeDateKey(member.expiryDate) === selectedDateStr;
 
               return (
                 <div
@@ -571,7 +574,7 @@ export function InteractiveCalendar({
                       <Badge variant="destructive" className="font-mono text-xs font-black">
                         {tTexts.debtBadge(member.amountDue || 0)}
                       </Badge>
-                    ) : isPaidStatus ? (
+                    ) : isPaymentDay || (!isExpiryDay && agendaByDate[selectedDateStr]?.paid.some((m) => m.id === member.id)) ? (
                       <Badge className="font-mono text-xs font-bold bg-green-600/20 text-green-400 border border-green-500/30">
                         {tTexts.paidBadge}
                       </Badge>
