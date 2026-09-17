@@ -307,7 +307,7 @@ export function InteractiveCalendar({
     changeDate:
       lang === 'ar' ? 'تعديل التاريخ' : lang === 'en' ? 'Change Date' : 'Changer date',
     paidBadge:
-      lang === 'ar' ? 'خلص ✓' : lang === 'en' ? 'Paid ✓' : 'Payé ✓',
+      lang === 'ar' ? 'مدفوع ✓' : lang === 'en' ? 'Paid ✓' : 'Payé ✓',
     callBtn:
       lang === 'ar' ? 'اتصال' : lang === 'en' ? 'Call' : 'Appel',
     waBtn:
@@ -543,6 +543,9 @@ export function InteractiveCalendar({
               const telUrl = member.phone ? `tel:+${formattedPhone}` : '#';
               const isExpanded = expandedMemberId === member.id;
 
+              const currentDayPaid = agendaByDate[selectedDateStr]?.paid.some((m) => m.id === member.id);
+              const isPaidStatus = !hasDebt && (currentDayPaid || normalizeDateKey(member.expiryDate) < todayStr || member.isPaid);
+
               return (
                 <div
                   key={member.id}
@@ -568,7 +571,7 @@ export function InteractiveCalendar({
                       <Badge variant="destructive" className="font-mono text-xs font-black">
                         {tTexts.debtBadge(member.amountDue || 0)}
                       </Badge>
-                    ) : normalizeDateKey(member.expiryDate) < normalizeDateKey(new Date()) ? (
+                    ) : isPaidStatus ? (
                       <Badge className="font-mono text-xs font-bold bg-green-600/20 text-green-400 border border-green-500/30">
                         {tTexts.paidBadge}
                       </Badge>
